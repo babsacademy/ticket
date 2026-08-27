@@ -25,10 +25,16 @@ RUN composer install \
 # Based on the PHP image (not a bare node image): the Wayfinder Vite plugin
 # shells out to `php artisan wayfinder:generate` during `vite build` to
 # (re)generate resources/js/actions & resources/js/routes from the app's
-# actual routes, so a working `artisan` + vendor/ must be present here too.
+# actual routes, so a working `artisan` must be present here too. mbstring
+# is installed because Laravel hard-requires it just to boot — it's cheap
+# (no heavy system libs), unlike the extensions this Dockerfile deliberately
+# avoids compiling (see stage 3).
 #
 FROM php:8.3-cli-alpine AS node-builder
-RUN apk add --no-cache nodejs npm
+RUN apk add --no-cache nodejs npm oniguruma \
+    && apk add --no-cache --virtual .build-deps $PHPIZE_DEPS oniguruma-dev \
+    && docker-php-ext-install -j"$(nproc)" mbstring \
+    && apk del .build-deps
 WORKDIR /app
 
 # Full app + installed vendor/ from stage 1 (needed for `artisan` to boot).
@@ -40,33 +46,36 @@ RUN npm run build
 #
 # ---- Stage 3: runtime image (PHP-FPM + Nginx) ----
 #
+# Deliberately minimal: only extensions this app actually calls at runtime,
+# each installed with the smallest feature set that covers real usage.
+# Skipped on purpose (heavy to compile, nothing in this app needs them):
+#   - intl:    no package in composer.lock hard-requires it, and the app's
+#              only locale-aware formatting (Carbon::locale('fr')) works
+#              from Carbon's own bundled translations, no ICU needed.
+#   - bcmath:  unused — money math here is plain float rounding
+#              (CommissionService), not arbitrary-precision arithmetic.
+#   - zip:     unused — no ZipArchive/export feature in this app.
+#   - gd's freetype/jpeg support: QrCodeGenerator never renders a label or
+#              logo onto the QR (see AbstractGdWriter usage), so gd is
+#              built with PNG support only (libpng), not font rendering or
+#              JPEG codecs. Re-add freetype-dev/libjpeg-turbo-dev + the
+#              --with-freetype --with-jpeg configure flags below if a
+#              labelled/logo'd QR or JPEG asset handling is ever added.
+#
 FROM php:8.3-fpm-alpine AS runtime
 
 RUN apk add --no-cache \
         nginx \
-        bash \
         gettext \
-        icu-libs \
-        libzip \
         libpng \
-        libjpeg-turbo \
-        freetype \
         oniguruma \
     && apk add --no-cache --virtual .build-deps \
         $PHPIZE_DEPS \
-        icu-dev \
-        libzip-dev \
         libpng-dev \
-        libjpeg-turbo-dev \
-        freetype-dev \
         oniguruma-dev \
-    && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install -j"$(nproc)" \
         pdo_mysql \
         mbstring \
-        bcmath \
-        intl \
-        zip \
         gd \
         pcntl \
         opcache \

@@ -16,6 +16,19 @@ Ce guide décrit comment déployer E-Ticketing Sénégal sur [Railway](https://r
 | `railway.worker.toml` | Config Railway du service **worker** (voir plus bas — nécessite une étape manuelle) |
 | `.env.production.example` | Liste de référence des variables d'environnement à définir sur Railway |
 
+### Extensions PHP installées dans l'image runtime
+
+Volontairement minimal, pour garder le build rapide sur les builders Railway (les premières versions du Dockerfile compilaient `intl` + `gd --with-freetype --with-jpeg`, ce qui provoquait des timeouts) :
+
+| Extension | Pourquoi |
+|---|---|
+| `pdo_mysql` | Connexion base de données (aucune lib système requise — mysqlnd est intégré à PHP) |
+| `mbstring` | Requis en dur par `laravel/framework` lui-même pour démarrer |
+| `gd` | `QrCodeGenerator`/`endroid/qr-code` (`extension_loaded('gd')` vérifié en dur) — compilé **sans** `--with-freetype --with-jpeg` : les QR codes générés n'ont ni label ni logo, donc pas besoin du rendu de texte ni du décodage JPEG |
+| `pcntl`, `opcache` | Arrêt propre du worker de queue, perf PHP-FPM — aucune lib système à compiler, quasi gratuits |
+
+Explicitement **exclues** (aucun package de `composer.lock` ne les requiert en dur, et rien dans `app/` ne les utilise) : `intl` (le formatage de dates en français passe par les traductions intégrées de Carbon, pas ICU), `bcmath` (les calculs de commission utilisent des floats arrondis, pas de l'arithmétique de précision arbitraire), `zip` (aucun export ZIP dans l'app). Si l'un de ces besoins apparaît plus tard (ex. QR avec logo), il faudra rajouter l'extension correspondante et ses dépendances de compilation dans le `Dockerfile`.
+
 ## ⚠️ Avant de lire la suite : deux points qui contredisent la demande initiale
 
 Je documente ces deux écarts explicitement plutôt que de les cacher, car ils changent concrètement la configuration à faire sur Railway.
