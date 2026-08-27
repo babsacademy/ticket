@@ -37,6 +37,33 @@ où `MySQL` est le nom exact que vous avez donné au service MySQL dans votre pr
 
 Railway a supprimé cette possibilité : chaque fichier de config-as-code (`railway.toml`/`railway.json`) décrit **un seul** service déployable — il n'existe pas de syntaxe `[[services]]` pour en définir plusieurs dans le même fichier. C'est pourquoi il y a deux fichiers (`railway.toml` et `railway.worker.toml`) : vous créerez deux services Railway distincts à partir du même dépôt, et le second devra être pointé manuellement vers `railway.worker.toml` dans son onglet Settings (étape 3 ci-dessous). Railway note aussi que le config-as-code par fichier est en cours de dépréciation au profit d'un futur `.railway/railway.ts` (Infrastructure as Code) — `railway.toml` reste pleinement fonctionnel aujourd'hui, mais gardez ça en tête si vous revisitez cette configuration plus tard.
 
+## Étape 0 — Publier le dépôt sur GitHub
+
+Le dépôt Git local existe déjà (premier commit fait), mais rien n'est encore poussé sur GitHub — Railway se connecte à un dépôt GitHub, pas à votre machine.
+
+**Option A — avec la CLI `gh` (si installée et authentifiée) :**
+
+```bash
+gh repo create e-ticketing-senegal --private --source=. --remote=origin --push
+```
+
+Cette seule commande crée le dépôt sur votre compte GitHub, ajoute le remote `origin` et pousse la branche `main` en une fois. Utilisez `--public` à la place de `--private` si vous voulez un dépôt public (déconseillé tant que `.env.production.example` ou l'historique pourraient évoluer avec des valeurs sensibles collées par erreur — vérifiez toujours avant de rendre public).
+
+**Option B — depuis github.com :**
+
+1. [github.com/new](https://github.com/new) → nommez le dépôt (ex. `e-ticketing-senegal`) → **ne cochez aucune case d'initialisation** (pas de README/`.gitignore`/licence — le dépôt local en a déjà) → **Create repository**.
+2. Copiez l'URL affichée (HTTPS ou SSH), puis dans le projet local :
+
+```bash
+git remote add origin <URL-du-dépôt>
+git branch -M main
+git push -u origin main
+```
+
+**Vérification** : `git remote -v` doit afficher `origin` pointant vers votre dépôt GitHub, et le dépôt sur github.com doit lister les mêmes fichiers que localement (447 fichiers au premier commit).
+
+Une fois poussé, revenez à l'étape 1 : c'est ce dépôt GitHub que vous connecterez à Railway.
+
 ## Étape 1 — Créer le projet et la base de données
 
 1. Sur [railway.com](https://railway.com), **New Project** → **Deploy from GitHub repo** → sélectionnez ce dépôt.
