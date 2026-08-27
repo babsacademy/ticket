@@ -1,0 +1,22 @@
+# Config-as-code for the "worker" Railway service (background queue
+# processor — GenerateTicketsJob, SendTicketNotificationJob, etc.).
+#
+# Builds from the exact same Dockerfile/image as the web service, but
+# overrides the start command to skip Nginx/PHP-FPM entirely and run the
+# queue worker as the container's only process instead.
+#
+# This file is NOT picked up automatically: in the Railway dashboard,
+# create a second service from this same repo, then set its
+# Settings → Config-as-code file path to `railway.worker.toml`.
+# See docs/deployment-railway.md for the exact steps.
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+# --max-time restarts the worker every hour (clean exit, code 0) to shed
+# any accumulated PHP memory — restartPolicyType must be ALWAYS (not
+# ON_FAILURE) for Railway to bring it back up after that exit.
+startCommand = "php artisan queue:work --tries=3 --backoff=10 --max-time=3600 --sleep=3"
+restartPolicyType = "ALWAYS"
