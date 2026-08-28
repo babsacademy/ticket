@@ -4,19 +4,13 @@ use App\Models\Event;
 use App\Models\Order;
 use App\Models\Ticket;
 use App\Models\TicketType;
-use Illuminate\Support\Facades\Storage;
 
 test('it downloads a PDF containing the order tickets', function () {
-    Storage::fake('public');
-
     $event = Event::factory()->create(['title' => 'Dakar Jazz Festival']);
     $ticketType = TicketType::factory()->for($event)->create(['name' => 'VIP']);
     $order = Order::factory()->for($event)->paid()->create(['buyer_name' => 'Fatou Sow']);
 
-    Ticket::factory()->for($order)->for($ticketType)->create([
-        'qr_image_path' => 'tickets/1.png',
-    ]);
-    Storage::disk('public')->put('tickets/1.png', 'fake-png-bytes');
+    Ticket::factory()->for($order)->for($ticketType)->create();
 
     $response = $this->get(route('checkout.ticket-pdf', $order));
 
@@ -24,7 +18,11 @@ test('it downloads a PDF containing the order tickets', function () {
     expect($response->headers->get('content-type'))->toContain('application/pdf');
 });
 
-test('it renders even when a ticket has no QR image yet', function () {
+test('it renders the QR code from qr_payload without needing shared storage', function () {
+    // Regression test: the web and worker containers don't share a
+    // filesystem in production, so the PDF's QR must be regenerated from
+    // qr_payload rather than read from qr_image_path/Storage — this must
+    // keep working even when no QR image was ever stored on disk.
     $event = Event::factory()->create();
     $ticketType = TicketType::factory()->for($event)->create();
     $order = Order::factory()->for($event)->paid()->create();

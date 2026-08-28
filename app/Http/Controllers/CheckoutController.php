@@ -11,6 +11,7 @@ use App\Models\Order;
 use App\Models\Ticket;
 use App\Models\TicketType;
 use App\Services\CommissionService;
+use App\Services\QrCodeGenerator;
 use App\Services\WavePaymentGateway;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
@@ -18,7 +19,6 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
 use RuntimeException;
@@ -29,6 +29,7 @@ class CheckoutController extends Controller
     public function __construct(
         private readonly CommissionService $commissionService,
         private readonly WavePaymentGateway $waveGateway,
+        private readonly QrCodeGenerator $qrCodeGenerator,
     ) {
         //
     }
@@ -149,10 +150,13 @@ class CheckoutController extends Controller
 
         abort_if($order->tickets->isEmpty(), 404);
 
+        // The QR is rendered on the fly from qr_payload rather than read from
+        // storage/qr_image_path: the web and worker containers don't share a
+        // filesystem in production, so a PNG the worker wrote to disk isn't
+        // visible here. Regenerating is deterministic (same payload in, same
+        // PNG out) and needs no shared storage.
         $tickets = $order->tickets->map(fn (Ticket $ticket): array => [
-            'qr_src' => $ticket->qr_image_path && Storage::disk('public')->exists($ticket->qr_image_path)
-                ? 'data:image/png;base64,'.base64_encode(Storage::disk('public')->get($ticket->qr_image_path))
-                : null,
+            'qr_src' => 'data:image/png;base64,'.base64_encode($this->qrCodeGenerator->toPng($ticket->qr_payload)),
             'type_name' => $ticket->ticketType->name,
             'number' => sprintf('#%06d', $ticket->id),
         ]);
