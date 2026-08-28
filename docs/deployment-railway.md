@@ -6,28 +6,33 @@ Ce guide décrit comment déployer E-Ticketing Sénégal sur [Railway](https://r
 
 | Fichier | Rôle |
 |---|---|
-| `Dockerfile` | Build multi-étapes : Composer → Vite (Node) → image runtime PHP-FPM + Nginx |
+| `Dockerfile` | Build multi-étapes : Composer → Vite (Node) → image runtime [`serversideup/php:8.3-fpm-nginx`](https://serversideup.net/open-source/docker-php/) |
 | `.dockerignore` | Exclut `.env`, `node_modules`, `vendor`, les tests, etc. du build |
-| `docker/nginx.conf.template` | Config Nginx (le `${PORT}` est substitué au démarrage) |
-| `docker/www.conf` | Pool PHP-FPM (écoute sur `127.0.0.1:9000`, `clear_env = no`) |
-| `docker/php.ini` | Réglages prod (OPcache, limites d'upload, `display_errors=Off`) |
-| `deploy.sh` | Point d'entrée du service **web** : migrations + cache, puis démarre PHP-FPM/Nginx |
-| `railway.toml` | Config Railway du service **web** |
+| `docker/entrypoint.d/40-app-deploy.sh` | Script exécuté à **chaque** démarrage de conteneur (web *et* worker), via le mécanisme `entrypoint.d` natif de l'image : `config:cache` + `view:cache` |
+| `railway.toml` | Config Railway du service **web** — inclut `preDeployCommand` pour les migrations |
 | `railway.worker.toml` | Config Railway du service **worker** (voir plus bas — nécessite une étape manuelle) |
 | `.env.production.example` | Liste de référence des variables d'environnement à définir sur Railway |
 
-### Extensions PHP installées dans l'image runtime
+### Pourquoi `serversideup/php:8.3-fpm-nginx`
 
-Volontairement minimal, pour garder le build rapide sur les builders Railway (les premières versions du Dockerfile compilaient `intl` + `gd --with-freetype --with-jpeg`, ce qui provoquait des timeouts) :
+Les deux versions précédentes du `Dockerfile` (image `php:8.3-fpm-alpine` avec compilation d'extensions via `docker-php-ext-install`) provoquaient des timeouts de build sur Railway. `serversideup/php` fournit PHP-FPM, Nginx et la supervision de process (S6 Overlay) **dans une seule image déjà construite**, avec un jeu d'extensions PHP précompilées — plus aucune compilation depuis les sources dans l'image runtime, sauf pour l'unique extension qu'il manque à ce projet.
 
-| Extension | Pourquoi |
-|---|---|
-| `pdo_mysql` | Connexion base de données (aucune lib système requise — mysqlnd est intégré à PHP) |
-| `mbstring` | Requis en dur par `laravel/framework` lui-même pour démarrer |
-| `gd` | `QrCodeGenerator`/`endroid/qr-code` (`extension_loaded('gd')` vérifié en dur) — compilé **sans** `--with-freetype --with-jpeg` : les QR codes générés n'ont ni label ni logo, donc pas besoin du rendu de texte ni du décodage JPEG |
-| `pcntl`, `opcache` | Arrêt propre du worker de queue, perf PHP-FPM — aucune lib système à compiler, quasi gratuits |
+### Extensions PHP dans l'image runtime
 
-Explicitement **exclues** (aucun package de `composer.lock` ne les requiert en dur, et rien dans `app/` ne les utilise) : `intl` (le formatage de dates en français passe par les traductions intégrées de Carbon, pas ICU), `bcmath` (les calculs de commission utilisent des floats arrondis, pas de l'arithmétique de précision arbitraire), `zip` (aucun export ZIP dans l'app). Si l'un de ces besoins apparaît plus tard (ex. QR avec logo), il faudra rajouter l'extension correspondante et ses dépendances de compilation dans le `Dockerfile`.
+Confirmé contre la doc officielle ([Default Configurations](https://serversideup.net/open-source/docker-php/docs/getting-started/default-configurations#default-php-extensions)), l'image `serversideup/php:8.3-fpm-nginx` inclut déjà :
+
+- ses propres ajouts : `opcache`, `pcntl`, `pdo_mysql`, `pdo_pgsql`, `redis`, `zip`
+- fournies par les images PHP officielles sous-jacentes : `ctype`, `curl`, `dom`, `fileinfo`, `filter`, `hash`, `mbstring`, `openssl`, `pcre`, `session`, `tokenizer`, `xml`
+
+Cela couvre déjà `mbstring` (requis en dur par `laravel/framework`), `pdo_mysql` (connexion base de données) et `pcntl` (arrêt propre du worker de queue). Il ne manque que :
+
+| Extension | Pourquoi | Installée via |
+|---|---|---|
+| `gd` | `QrCodeGenerator`/`endroid/qr-code` (`extension_loaded('gd')` vérifié en dur) | `install-php-extensions gd` (outil `mlocati/docker-php-extension-installer`, inclus dans l'image) |
+
+`intl`, `bcmath` et `zip`-au-sens-applicatif restent inutiles ici pour les mêmes raisons que documentées précédemment (formatage de dates via les traductions de Carbon, calculs de commission en floats arrondis, aucune fonctionnalité ZIP dans l'app) — `zip` est en fait déjà présent par défaut dans cette image sans coût supplémentaire, simplement non utilisé par le code actuel.
+
+OPcache est **désactivé par défaut** sur cette image (contrairement à l'ancienne) : le `Dockerfile` le réactive explicitement via `ENV PHP_OPCACHE_ENABLE=1`, substituable au runtime avec une variable Railway du même nom si besoin de le désactiver temporairement pour du debug.
 
 ## ⚠️ Avant de lire la suite : deux points qui contredisent la demande initiale
 
@@ -94,9 +99,9 @@ Renommez-le en `web` (Settings → nom du service) pour s'y retrouver.
 2. Renommez-le en `worker`.
 3. Onglet **Settings** → section **Config-as-code** (ou **Build**) → **Config File Path** → entrez `railway.worker.toml`.
    > Railway précise que ce chemin doit être **absolu par rapport à la racine du dépôt** et ne suit pas un éventuel "Root Directory" — `railway.worker.toml` (sans `./`) suffit puisque le fichier est à la racine.
-4. Vérifiez dans l'onglet **Deploy** que la commande de démarrage effective est bien `php artisan queue:work ...` (celle définie dans `railway.worker.toml`) et non `deploy.sh`.
+4. Vérifiez dans l'onglet **Deploy** que la commande de démarrage effective est bien `php artisan queue:work ...` (celle définie dans `railway.worker.toml`) et non le `CMD` par défaut de l'image (nginx + php-fpm).
 
-Le worker construit exactement la même image Docker que le web (même `Dockerfile`), mais son `startCommand` remplace entièrement le `CMD` de l'image : il ne lance ni Nginx ni PHP-FPM, uniquement `php artisan queue:work`. Les migrations ne tournent que côté web (`deploy.sh`) — c'est voulu, pour éviter que les deux services ne les exécutent en parallèle à chaque déploiement.
+Le worker construit exactement la même image Docker que le web (même `Dockerfile`), mais son `startCommand` remplace le `CMD` de l'image : il ne lance ni Nginx ni PHP-FPM, uniquement `php artisan queue:work`. Le script `docker/entrypoint.d/40-app-deploy.sh` (config/view cache) s'exécute quand même avant, sur les deux services — c'est sans risque, ces commandes sont idempotentes. Les migrations, elles, ne tournent que côté web (`preDeployCommand` dans `railway.toml`, pas de `preDeployCommand` dans `railway.worker.toml`) — c'est voulu, pour éviter que les deux services ne les exécutent en parallèle à chaque déploiement.
 
 ## Étape 4 — Variables d'environnement
 
@@ -113,19 +118,17 @@ APP_TICKET_SECRET=                # php -r "echo bin2hex(random_bytes(32)) . PHP
 PAYMENT_ENABLED=false             # tant que WAVE_SECRET_KEY / WAVE_WEBHOOK_SECRET ne sont pas renseignés
 ```
 
-`APP_KEY` ne doit **jamais** être régénérée à chaque déploiement (`deploy.sh` ne le fait volontairement pas) : la changer invalide toutes les sessions actives et rend illisibles les colonnes chiffrées existantes.
+`APP_KEY` ne doit **jamais** être régénérée à chaque déploiement (aucun script de ce projet ne le fait) : la changer invalide toutes les sessions actives et rend illisibles les colonnes chiffrées existantes.
 
 ## Étape 5 — Premier déploiement
 
-Railway construit l'image et lance `deploy.sh` au démarrage du conteneur web, qui exécute dans l'ordre :
+Pour le service **web**, Railway construit l'image puis, avant de router le trafic vers la nouvelle version :
 
-1. Substitution de `${PORT}` dans la config Nginx (`envsubst`)
-2. `php artisan migrate --force`
-3. `php artisan config:cache && view:cache`
-   > Pas de `route:cache` : `routes/api.php` a une route en Closure héritée du scaffolding Sanctum (`GET /user`), et `route:cache` échoue systématiquement dès qu'une route n'est pas liée à un contrôleur. Sans risque à ce nombre de routes — le cache ne devient vraiment utile qu'à partir de centaines de routes.
-4. Démarrage de PHP-FPM puis de Nginx
+1. Exécute `preDeployCommand` (`railway.toml`) : `php artisan migrate --force`, une seule fois pour ce déploiement.
+2. Démarre le conteneur : l'entrypoint natif de `serversideup/php` exécute d'abord ses scripts internes (config Nginx, certificat SSL auto-signé, etc.) puis `docker/entrypoint.d/40-app-deploy.sh` (`config:cache` + `view:cache`), avant de lancer PHP-FPM et Nginx.
+   > Pas de `route:cache` : `routes/api.php` a une route en Closure héritée du scaffolding Sanctum (`GET /user`), et `route:cache` échoue systématiquement dès qu'une route n'est pas liée à un contrôleur. Sans risque à ce nombre de routes — le cache ne devient vraiment utile qu'à partir de centaines de routes. C'est aussi pour cette raison qu'`AUTORUN_ENABLED` (le mécanisme d'automatisation intégré à l'image, qui lancerait `route:cache` par défaut) n'est **volontairement pas activé** — ne définissez pas cette variable sur Railway.
 
-Le service worker, lui, démarre directement `php artisan queue:work` (pas de migrations, pas de cache — il réutilise la base déjà migrée par le web).
+Le service **worker** passe directement par `docker/entrypoint.d/40-app-deploy.sh` (même cache, sans risque à relancer) puis démarre `php artisan queue:work` — pas de migrations de son côté, il réutilise la base déjà migrée par le web.
 
 Suivez les logs de build/déploiement dans l'onglet **Deployments** de chaque service. Une fois le service web « Active » avec un healthcheck vert sur `/up`, ouvrez `APP_URL` dans un navigateur.
 
@@ -152,8 +155,9 @@ https://<votre-domaine>/api/v1/webhooks/wave
 
 ## Dépannage
 
-- **Le healthcheck `/up` échoue / 502** : vérifiez dans les logs du service web que `deploy.sh` a bien atteint la ligne `Starting Nginx` — le plus souvent, une migration en échec (base non accessible) bloque tout avant que Nginx ne démarre.
-- **`env()` renvoie toujours `null` en PHP alors que la variable est bien définie sur Railway** : c'est le piège classique PHP-FPM + Docker — `clear_env = no` dans `docker/www.conf` évite ce problème ; ne le retirez pas.
+- **Le healthcheck `/up` échoue / 502** : vérifiez d'abord l'onglet **Deployments** → le `preDeployCommand` (migrations) — s'il échoue (base non accessible), le déploiement ne démarre jamais le conteneur. Si le pré-déploiement passe, regardez les logs du conteneur lui-même pour `docker/entrypoint.d/40-app-deploy.sh` puis le démarrage de PHP-FPM/Nginx par `serversideup/php`.
+- **`env()` renvoie toujours `null` en PHP alors que la variable est bien définie sur Railway** : le piège classique PHP-FPM + Docker (`clear_env`) est déjà géré par la configuration par défaut de l'image `serversideup/php` — si ça se reproduit, vérifiez que la variable est bien définie sur le bon service (web **et** worker ont besoin de leurs propres copies, voir étape 4).
 - **Erreur de connexion MySQL** : confirmez que `DB_URL` référence bien `${{<NomDuServiceMySQL>.MYSQL_URL}}` et que ce nom correspond exactement à celui affiché dans l'onglet du service MySQL (sensible à la casse).
 - **Le worker ne redémarre pas après une heure** : normal si `restartPolicyType` a été changé — `railway.worker.toml` doit rester sur `ALWAYS` (pas `ON_FAILURE`), car `--max-time=3600` termine le process avec le code de sortie `0`, qu'`ON_FAILURE` ne relance pas.
-- **Upload d'image refusé (413)** : la limite est de 10 Mo côté Nginx (`client_max_body_size`) et PHP (`upload_max_filesize`/`post_max_size`, `docker/php.ini`) — cohérent avec la validation `max:2048` (2 Mo) du formulaire admin, avec marge.
+- **Upload d'image refusé (413)** : la limite par défaut de `serversideup/php` est `100M` côté Nginx (`NGINX_CLIENT_MAX_BODY_SIZE`) et PHP (`PHP_UPLOAD_MAX_FILE_SIZE`/`PHP_POST_MAX_SIZE`) — largement au-dessus de la validation `max:2048` (2 Mo) du formulaire admin, donc ce message viendrait d'ailleurs (proxy externe, taille réelle du fichier) plutôt que de cette limite.
+- **Build qui échoue sur `install-php-extensions gd`** : vérifiez les logs de build — cet outil résout et installe lui-même les dépendances système de `gd` (libpng, etc.), donc un échec ici est généralement un problème réseau transitoire du builder Railway plutôt qu'une dépendance manquante à ajouter à la main.

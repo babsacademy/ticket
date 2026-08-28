@@ -22,13 +22,10 @@ RUN composer install \
 #
 # ---- Stage 2: frontend build (Vite / React / Tailwind) ----
 #
-# Based on the PHP image (not a bare node image): the Wayfinder Vite plugin
+# Based on a PHP image (not a bare node image): the Wayfinder Vite plugin
 # shells out to `php artisan wayfinder:generate` during `vite build` to
 # (re)generate resources/js/actions & resources/js/routes from the app's
-# actual routes, so a working `artisan` must be present here too. mbstring
-# is installed because Laravel hard-requires it just to boot — it's cheap
-# (no heavy system libs), unlike the extensions this Dockerfile deliberately
-# avoids compiling (see stage 3).
+# actual routes, so a working `artisan` must be present here too.
 #
 FROM php:8.3-cli-alpine AS node-builder
 RUN apk add --no-cache nodejs npm oniguruma \
@@ -44,71 +41,60 @@ RUN npm ci
 RUN npm run build
 
 #
-# ---- Stage 3: runtime image (PHP-FPM + Nginx) ----
+# ---- Stage 3: runtime image (serversideup/php: PHP-FPM + Nginx + S6) ----
 #
-# Deliberately minimal: only extensions this app actually calls at runtime,
-# each installed with the smallest feature set that covers real usage.
-# Skipped on purpose (heavy to compile, nothing in this app needs them):
-#   - intl:    no package in composer.lock hard-requires it, and the app's
-#              only locale-aware formatting (Carbon::locale('fr')) works
-#              from Carbon's own bundled translations, no ICU needed.
-#   - bcmath:  unused — money math here is plain float rounding
-#              (CommissionService), not arbitrary-precision arithmetic.
-#   - zip:     unused — no ZipArchive/export feature in this app.
-#   - gd's freetype/jpeg support: QrCodeGenerator never renders a label or
-#              logo onto the QR (see AbstractGdWriter usage), so gd is
-#              built with PNG support only (libpng), not font rendering or
-#              JPEG codecs. Re-add freetype-dev/libjpeg-turbo-dev + the
-#              --with-freetype --with-jpeg configure flags below if a
-#              labelled/logo'd QR or JPEG asset handling is ever added.
+# serversideup/php:8.3-fpm-nginx ships PHP-FPM, Nginx, and S6 Overlay process
+# supervision in one image, with a set of PHP extensions already precompiled:
+#   - their own additions: opcache, pcntl, pdo_mysql, pdo_pgsql, redis, zip
+#   - bundled by the official upstream php images: ctype, curl, dom,
+#     fileinfo, filter, hash, mbstring, openssl, pcre, session, tokenizer, xml
+# (confirmed against serversideup's "Default Configurations" docs). That
+# already covers everything this app needs — mbstring, pdo_mysql, pcntl —
+# EXCEPT `gd` (used by endroid/qr-code to rasterize ticket QR codes), which
+# is not in their default set and is the only extension installed below.
 #
-FROM php:8.3-fpm-alpine AS runtime
+FROM serversideup/php:8.3-fpm-nginx AS runtime
 
-RUN apk add --no-cache \
-        nginx \
-        gettext \
-        libpng \
-        oniguruma \
-    && apk add --no-cache --virtual .build-deps \
-        $PHPIZE_DEPS \
-        libpng-dev \
-        oniguruma-dev \
-    && docker-php-ext-install -j"$(nproc)" \
-        pdo_mysql \
-        mbstring \
-        gd \
-        pcntl \
-        opcache \
-    && apk del .build-deps \
-    && rm -rf /var/cache/apk/*
+# Images are unprivileged by default (run as www-data) — switch to root to
+# install the extension and set file ownership, then drop back down at the
+# end, per serversideup's documented convention.
+USER root
+
+RUN install-php-extensions gd
 
 WORKDIR /var/www/html
 
-# Application code (respects .dockerignore: no .env, node_modules, vendor,
-# tests, or local git metadata end up in the image).
-COPY . .
-
-# Vendored PHP dependencies and built frontend assets from the earlier
-# stages (both already contain everything `composer install`/`vite build`
-# produced — this just replaces the dev-time vendor/public/build with the
-# production ones).
-COPY --from=composer-builder /app/vendor ./vendor
-COPY --from=node-builder /app/public/build ./public/build
-
-# Nginx/PHP-FPM/PHP configuration.
-COPY docker/nginx.conf.template /etc/nginx/nginx.conf.template
-COPY docker/www.conf /usr/local/etc/php-fpm.d/www.conf
-COPY docker/php.ini /usr/local/etc/php/conf.d/zz-app.ini
-COPY deploy.sh /usr/local/bin/deploy.sh
-RUN chmod +x /usr/local/bin/deploy.sh
+# Application code, vendored PHP dependencies, and built frontend assets —
+# owned by www-data from the start (COPY --chown) rather than a separate
+# chown pass. .dockerignore keeps .env, node_modules, vendor, tests, and
+# local git metadata out of the build context.
+COPY --chown=www-data:www-data . .
+COPY --chown=www-data:www-data --from=composer-builder /app/vendor ./vendor
+COPY --chown=www-data:www-data --from=node-builder /app/public/build ./public/build
 
 # The public storage symlink is a static filesystem operation (no runtime
 # env needed), so it's safe — and faster — to create it once at build time.
+# Still running as root here, so fix ownership on what storage:link and
+# these directories create.
 RUN php artisan storage:link \
     && mkdir -p storage/framework/cache/data storage/framework/sessions storage/framework/testing storage/framework/views storage/logs bootstrap/cache \
-    && chown -R www-data:www-data storage bootstrap/cache \
+    && chown -R www-data:www-data storage bootstrap/cache public/storage \
     && chmod -R 775 storage bootstrap/cache
 
-EXPOSE 8080
+# Custom startup step: config/view cache, run once per container start via
+# serversideup's entrypoint.d mechanism (executes before the image's own CMD
+# — nginx+php-fpm for the web service, `php artisan queue:work` for the
+# worker service, see railway.toml / railway.worker.toml). See the script
+# itself for why `migrate` and `route:cache` are deliberately NOT in it.
+COPY docker/entrypoint.d/40-app-deploy.sh /etc/entrypoint.d/40-app-deploy.sh
+RUN chmod 755 /etc/entrypoint.d/40-app-deploy.sh
 
-CMD ["/usr/local/bin/deploy.sh"]
+# OPcache ships disabled by default on this image; this is the sane
+# production default. Override with PHP_OPCACHE_ENABLE=0 at runtime (e.g.
+# Railway service variable) if it's ever needed for debugging.
+ENV PHP_OPCACHE_ENABLE=1
+
+# Drop back to the unprivileged user for runtime.
+USER www-data
+
+EXPOSE 8080 8443

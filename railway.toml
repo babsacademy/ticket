@@ -1,16 +1,21 @@
 # Config-as-code for the "web" Railway service (the Laravel/Inertia app
-# itself, served by Nginx + PHP-FPM). See docs/deployment-railway.md for the
-# full setup — in particular, why the queue worker needs a SECOND Railway
-# service pointed at railway.worker.toml rather than being defined here:
-# Railway's config-as-code describes one deployable service per file, it
-# has no syntax for declaring several independent services in one file.
+# itself, served by Nginx + PHP-FPM inside the serversideup/php image). See
+# docs/deployment-railway.md for the full setup — in particular, why the
+# queue worker needs a SECOND Railway service pointed at
+# railway.worker.toml rather than being defined here: Railway's
+# config-as-code describes one deployable service per file, it has no
+# syntax for declaring several independent services in one file.
 
 [build]
 builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
 
 [deploy]
-startCommand = "/usr/local/bin/deploy.sh"
+# Runs exactly once per deploy (not on every container start/restart),
+# before traffic is routed to the new version. Config/view caching happens
+# separately, on every container start, via
+# docker/entrypoint.d/40-app-deploy.sh — see that script for why.
+preDeployCommand = ["php artisan migrate --force"]
 healthcheckPath = "/up"
 healthcheckTimeout = 100
 restartPolicyType = "ON_FAILURE"

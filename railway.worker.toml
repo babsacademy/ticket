@@ -2,8 +2,11 @@
 # processor — GenerateTicketsJob, SendTicketNotificationJob, etc.).
 #
 # Builds from the exact same Dockerfile/image as the web service, but
-# overrides the start command to skip Nginx/PHP-FPM entirely and run the
-# queue worker as the container's only process instead.
+# overrides the start command so PHP-FPM/Nginx never start — the queue
+# worker runs as the container's only long-lived process instead. The
+# serversideup/php entrypoint (docker/entrypoint.d/40-app-deploy.sh) still
+# runs first regardless of this override, warming this container's own
+# config/view cache before handing off to queue:work.
 #
 # This file is NOT picked up automatically: in the Railway dashboard,
 # create a second service from this same repo, then set its
@@ -17,6 +20,8 @@ dockerfilePath = "Dockerfile"
 [deploy]
 # --max-time restarts the worker every hour (clean exit, code 0) to shed
 # any accumulated PHP memory — restartPolicyType must be ALWAYS (not
-# ON_FAILURE) for Railway to bring it back up after that exit.
+# ON_FAILURE) for Railway to bring it back up after that exit. No
+# preDeployCommand here: migrations are the web service's job (see
+# railway.toml) — running them from both services would race.
 startCommand = "php artisan queue:work --tries=3 --backoff=10 --max-time=3600 --sleep=3"
 restartPolicyType = "ALWAYS"
