@@ -37,7 +37,14 @@ WORKDIR /app
 # Full app + installed vendor/ from stage 1 (needed for `artisan` to boot).
 COPY --from=composer-builder /app ./
 
-RUN npm ci
+# `npm ci` requires the lockfile to already list a resolver binding for the
+# platform being installed on; the committed package-lock.json was
+# generated on Windows and is missing the linux entries for optional
+# platform packages (@emnapi/core, @emnapi/runtime), so it fails on this
+# Linux build stage. `npm install --prefer-offline` resolves/adds whatever
+# platform-specific optional deps are missing (using the local npm cache
+# when possible) instead of hard-failing on the mismatch.
+RUN npm install --prefer-offline
 RUN npm run build
 
 #
