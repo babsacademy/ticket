@@ -76,4 +76,12 @@ class User extends Authenticatable implements PasskeyUser
     {
         return $this->hasMany(Ticket::class, 'scanned_by');
     }
+
+    /**
+     * @return HasMany<TwoFactorCode, $this>
+     */
+    public function twoFactorCodes(): HasMany
+    {
+        return $this->hasMany(TwoFactorCode::class);
+    }
 }

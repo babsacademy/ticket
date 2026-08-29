@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Actions\Fortify\CreateNewUser;
+use App\Actions\Fortify\RedirectAdminToEmailTwoFactorChallenge;
 use App\Actions\Fortify\ResetUserPassword;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
@@ -11,6 +12,10 @@ use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\Password;
 use Inertia\Inertia;
+use Laravel\Fortify\Actions\AttemptToAuthenticate;
+use Laravel\Fortify\Actions\CanonicalizeUsername;
+use Laravel\Fortify\Actions\EnsureLoginIsNotThrottled;
+use Laravel\Fortify\Actions\PrepareAuthenticatedSession;
 use Laravel\Fortify\Features;
 use Laravel\Fortify\Fortify;
 
@@ -32,6 +37,7 @@ class FortifyServiceProvider extends ServiceProvider
         $this->configureActions();
         $this->configureViews();
         $this->configureRateLimiting();
+        $this->configureAuthenticationPipeline();
     }
 
     /**
@@ -96,5 +102,27 @@ class FortifyServiceProvider extends ServiceProvider
                 ($request->input('credential.id') ?: $request->session()->getId()).'|'.$request->ip(),
             );
         });
+    }
+
+    /**
+     * Replace Fortify's default login pipeline with one identical to its
+     * own (see AuthenticatedSessionController::loginPipeline()), except
+     * RedirectAdminToEmailTwoFactorChallenge stands in for the stock
+     * two-factor-authenticatable check: it forces email OTP for admins and
+     * otherwise falls through to that same stock TOTP-or-continue check
+     * unchanged. Unlike the stock pipeline this is inserted unconditionally
+     * rather than behind Features::enabled(Features::twoFactorAuthentication()) —
+     * that feature is enabled in config/fortify.php and expected to stay
+     * that way; if it's ever disabled, revisit this pipe too.
+     */
+    private function configureAuthenticationPipeline(): void
+    {
+        Fortify::authenticateThrough(fn () => array_filter([
+            config('fortify.limiters.login') ? null : EnsureLoginIsNotThrottled::class,
+            config('fortify.lowercase_usernames') ? CanonicalizeUsername::class : null,
+            RedirectAdminToEmailTwoFactorChallenge::class,
+            AttemptToAuthenticate::class,
+            PrepareAuthenticatedSession::class,
+        ]));
     }
 }
