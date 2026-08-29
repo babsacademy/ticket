@@ -64,4 +64,17 @@ class Ticket extends Model
     {
         return $this->belongsTo(User::class, 'scanned_by');
     }
+
+    /**
+     * The full signed QR string ("payload.signature") — the single source
+     * of truth for how these two columns combine. Every place that needs
+     * to encode, re-render, or hand out this ticket's QR content (the
+     * downloadable PDF, the scanner API's offline-download endpoint, …)
+     * must go through this method rather than concatenating the columns
+     * itself: qr_payload alone has already shipped as a bug twice.
+     */
+    public function fullToken(): string
+    {
+        return "{$this->qr_payload}.{$this->signature}";
+    }
 }

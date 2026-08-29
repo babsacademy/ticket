@@ -35,8 +35,7 @@ test('it generates one signed, verifiable ticket per purchased unit and queues t
         expect($ticket->holder_name)->toBe('Fatou Sow')
             ->and($ticket->qr_image_path)->not->toBeNull();
 
-        $qrString = "{$ticket->qr_payload}.{$ticket->signature}";
-        $result = $signatureService->verifySignature($qrString);
+        $result = $signatureService->verifySignature($ticket->fullToken());
 
         expect($result['valid'])->toBeTrue()
             ->and($result['data']['ticket_id'])->toBe($ticket->id);

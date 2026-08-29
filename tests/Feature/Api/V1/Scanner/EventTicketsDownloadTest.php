@@ -64,7 +64,7 @@ test('it lists only the tickets belonging to paid orders for that event', functi
             'data' => [
                 [
                     'id' => $paidTicket->id,
-                    'token' => "{$paidTicket->qr_payload}.{$paidTicket->signature}",
+                    'token' => $paidTicket->fullToken(),
                     'holder_name' => 'Fatou Sow',
                     'ticket_type' => 'VIP',
                 ],

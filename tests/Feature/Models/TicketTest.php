@@ -37,3 +37,12 @@ test('qr payload and signature are generated for every ticket', function () {
     expect($ticket->qr_payload)->not->toBeEmpty()
         ->and($ticket->signature)->not->toBeEmpty();
 });
+
+test('fullToken combines qr_payload and signature with a dot, matching what verifySignature expects', function () {
+    $ticket = Ticket::factory()->create([
+        'qr_payload' => 'cGF5bG9hZA==',
+        'signature' => 'abc123',
+    ]);
+
+    expect($ticket->fullToken())->toBe('cGF5bG9hZA==.abc123');
+});

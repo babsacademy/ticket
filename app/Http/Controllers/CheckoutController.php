@@ -150,20 +150,14 @@ class CheckoutController extends Controller
 
         abort_if($order->tickets->isEmpty(), 404);
 
-        // The QR is rendered on the fly from qr_payload+signature rather than
+        // The QR is rendered on the fly from Ticket::fullToken() rather than
         // read from storage/qr_image_path: the web and worker containers
         // don't share a filesystem in production, so a PNG the worker wrote
         // to disk isn't visible here. Regenerating is deterministic (same
         // input in, same PNG out) and needs no shared storage.
-        //
-        // Must be "{qr_payload}.{signature}", not qr_payload alone: that's
-        // the exact string TicketSignatureService::generatePayload() builds
-        // and what verifySignature() expects to split on "." — a PDF
-        // encoding only the payload half produces a QR that can never pass
-        // signature verification (confirmed bug, fixed here).
         $tickets = $order->tickets->map(fn (Ticket $ticket): array => [
             'qr_src' => 'data:image/png;base64,'.base64_encode(
-                $this->qrCodeGenerator->toPng("{$ticket->qr_payload}.{$ticket->signature}")
+                $this->qrCodeGenerator->toPng($ticket->fullToken())
             ),
             'type_name' => $ticket->ticketType->name,
             'number' => sprintf('#%06d', $ticket->id),
