@@ -135,11 +135,124 @@ test('admins can create an event with ticket types', function () {
         ->and($event->organizer_id)->toBe($organizer->id)
         ->and($event->status)->toBe(EventStatus::Published)
         ->and($event->cover_image)->not->toBeNull()
+        ->and($event->cover_image)->toEndWith('.webp')
         ->and($event->ticketTypes)->toHaveCount(2);
 
     Storage::disk('public')->assertExists($event->cover_image);
 
     expect($event->ticketTypes->pluck('name')->all())->toBe(['Standard', 'VIP']);
+});
+
+test('a JPG cover image is converted to WebP and resized to at most 1200px wide', function () {
+    Storage::fake('public');
+
+    $admin = User::factory()->admin()->create();
+    $organizer = User::factory()->organizer()->create();
+
+    $response = $this->actingAs($admin)->post(route('admin.events.store'), [
+        'organizer_id' => $organizer->id,
+        'title' => 'Événement JPG',
+        'date' => '2026-09-15T20:00',
+        'venue' => 'Un lieu',
+        'capacity' => 100,
+        'status' => EventStatus::Draft->value,
+        'cover_image' => UploadedFile::fake()->image('cover.jpg', 2000, 1000),
+        'ticket_types' => [['name' => 'Standard', 'price' => 1000]],
+    ]);
+
+    $response->assertSessionHasNoErrors();
+
+    $event = Event::firstOrFail();
+    $stored = Storage::disk('public')->get($event->cover_image);
+    $size = getimagesizefromstring($stored);
+
+    expect($event->cover_image)->toEndWith('.webp')
+        ->and($size['mime'])->toBe('image/webp')
+        ->and($size[0])->toBe(1200) // scaled down from 2000 to the 1200px cap
+        ->and($size[1])->toBe(600); // proportional: 1000 * (1200/2000)
+});
+
+test('a PNG cover image narrower than the cap is converted to WebP without being upscaled', function () {
+    Storage::fake('public');
+
+    $admin = User::factory()->admin()->create();
+    $organizer = User::factory()->organizer()->create();
+
+    $response = $this->actingAs($admin)->post(route('admin.events.store'), [
+        'organizer_id' => $organizer->id,
+        'title' => 'Événement PNG',
+        'date' => '2026-09-15T20:00',
+        'venue' => 'Un lieu',
+        'capacity' => 100,
+        'status' => EventStatus::Draft->value,
+        'cover_image' => UploadedFile::fake()->image('cover.png', 400, 300),
+        'ticket_types' => [['name' => 'Standard', 'price' => 1000]],
+    ]);
+
+    $response->assertSessionHasNoErrors();
+
+    $event = Event::firstOrFail();
+    $stored = Storage::disk('public')->get($event->cover_image);
+    $size = getimagesizefromstring($stored);
+
+    expect($event->cover_image)->toEndWith('.webp')
+        ->and($size['mime'])->toBe('image/webp')
+        ->and($size[0])->toBe(400) // narrower than the 1200px cap: left as-is
+        ->and($size[1])->toBe(300);
+});
+
+test('updating an event with a new cover image deletes the old one', function () {
+    Storage::fake('public');
+
+    $admin = User::factory()->admin()->create();
+    $organizer = User::factory()->organizer()->create();
+    $event = Event::factory()->create(['organizer_id' => $organizer->id, 'cover_image' => 'events/old-cover.webp']);
+    Storage::disk('public')->put('events/old-cover.webp', 'fake-old-webp-bytes');
+    TicketType::factory()->for($event)->create();
+
+    $response = $this->actingAs($admin)->put(route('admin.events.update', $event), [
+        'organizer_id' => $organizer->id,
+        'title' => $event->title,
+        'date' => '2026-10-01T19:00',
+        'venue' => $event->venue,
+        'capacity' => $event->capacity,
+        'status' => EventStatus::Draft->value,
+        'cover_image' => UploadedFile::fake()->image('new-cover.jpg'),
+        'ticket_types' => [['name' => 'Standard', 'price' => 1000]],
+    ]);
+
+    $response->assertSessionHasNoErrors();
+
+    $event->refresh();
+
+    Storage::disk('public')->assertMissing('events/old-cover.webp');
+    Storage::disk('public')->assertExists($event->cover_image);
+    expect($event->cover_image)->not->toBe('events/old-cover.webp')
+        ->and($event->cover_image)->toEndWith('.webp');
+});
+
+test('the public homepage exposes the converted WebP cover image path', function () {
+    Storage::fake('public');
+
+    $admin = User::factory()->admin()->create();
+    $organizer = User::factory()->organizer()->create();
+
+    $this->actingAs($admin)->post(route('admin.events.store'), [
+        'organizer_id' => $organizer->id,
+        'title' => 'Événement avec image',
+        'date' => '2026-09-15T20:00',
+        'venue' => 'Un lieu',
+        'capacity' => 100,
+        'status' => EventStatus::Published->value,
+        'cover_image' => UploadedFile::fake()->image('cover.jpg'),
+        'ticket_types' => [['name' => 'Standard', 'price' => 1000]],
+    ]);
+
+    $event = Event::firstOrFail();
+
+    $this->get(route('home'))->assertInertia(fn (Assert $page) => $page
+        ->where('events.0.cover_image', $event->cover_image)
+    );
 });
 
 test('creating an event without any ticket type fails validation', function () {

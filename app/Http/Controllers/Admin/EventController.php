@@ -11,6 +11,7 @@ use App\Http\Requests\Admin\UpdateEventRequest;
 use App\Models\Event;
 use App\Models\Ticket;
 use App\Models\User;
+use App\Services\EventCoverImageService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -20,6 +21,11 @@ use Inertia\Response;
 
 class EventController extends Controller
 {
+    public function __construct(private readonly EventCoverImageService $coverImageService)
+    {
+        //
+    }
+
     /**
      * Display the paginated list of events with sales stats.
      */
@@ -83,7 +89,7 @@ class EventController extends Controller
             $event = Event::create([
                 ...collect($validated)->except(['cover_image', 'ticket_types'])->all(),
                 'cover_image' => $request->hasFile('cover_image')
-                    ? $request->file('cover_image')->store('events', 'public')
+                    ? $this->coverImageService->store($request->file('cover_image'))
                     : null,
             ]);
 
@@ -185,12 +191,14 @@ class EventController extends Controller
         $validated = $request->validated();
 
         DB::transaction(function () use ($validated, $request, $event): void {
-            $event->update([
-                ...collect($validated)->except(['cover_image', 'ticket_types'])->all(),
-                ...($request->hasFile('cover_image')
-                    ? ['cover_image' => $request->file('cover_image')->store('events', 'public')]
-                    : []),
-            ]);
+            $attributes = collect($validated)->except(['cover_image', 'ticket_types'])->all();
+
+            if ($request->hasFile('cover_image')) {
+                $this->coverImageService->delete($event->cover_image);
+                $attributes['cover_image'] = $this->coverImageService->store($request->file('cover_image'));
+            }
+
+            $event->update($attributes);
 
             foreach ($validated['ticket_types'] as $ticketType) {
                 if (! empty($ticketType['id'])) {
