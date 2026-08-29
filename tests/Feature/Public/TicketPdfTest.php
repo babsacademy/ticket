@@ -4,6 +4,8 @@ use App\Models\Event;
 use App\Models\Order;
 use App\Models\Ticket;
 use App\Models\TicketType;
+use App\Services\QrCodeGenerator;
+use App\Services\TicketSignatureService;
 
 test('it downloads a PDF containing the order tickets', function () {
     $event = Event::factory()->create(['title' => 'Dakar Jazz Festival']);
@@ -32,6 +34,43 @@ test('it renders the QR code from qr_payload without needing shared storage', fu
     $response = $this->get(route('checkout.ticket-pdf', $order));
 
     $response->assertOk();
+});
+
+test('the embedded QR encodes the full payload.signature string, not the payload alone', function () {
+    // Regression test: this exact bug shipped once already (the PDF QR was
+    // regenerated from qr_payload alone, missing ".signature") — confirmed
+    // live by scanning a real downloaded ticket, whose QR decoded to just
+    // the payload with no "." at all. verifySignature() requires the full
+    // string to ever return valid, so this asserts the QR generator is
+    // actually called with it.
+    $event = Event::factory()->create();
+    $ticketType = TicketType::factory()->for($event)->create();
+    $order = Order::factory()->for($event)->paid()->create();
+    $ticket = Ticket::factory()->for($order)->for($ticketType)->create();
+
+    // The factory's default qr_payload/signature are independently fake
+    // (not a real HMAC of that payload) — overwrite them with what
+    // GenerateTicketsJob actually stores in production, so this test
+    // proves round-trip decodability through the real signature service.
+    $signatureService = app(TicketSignatureService::class);
+    $expectedQrString = $signatureService->generatePayload($ticket);
+    [$payload, $signature] = explode('.', $expectedQrString, 2);
+    $ticket->update(['qr_payload' => $payload, 'signature' => $signature]);
+
+    $this->mock(QrCodeGenerator::class, function ($mock) use ($expectedQrString): void {
+        $mock->shouldReceive('toPng')
+            ->once()
+            ->with($expectedQrString)
+            ->andReturn('fake-png-bytes');
+    });
+
+    $response = $this->get(route('checkout.ticket-pdf', $order));
+
+    $response->assertOk();
+
+    $verification = $signatureService->verifySignature($expectedQrString);
+    expect($verification['valid'])->toBeTrue()
+        ->and($verification['data']['ticket_id'])->toBe($ticket->id);
 });
 
 test('it returns a 404 when the order has no tickets yet', function () {
