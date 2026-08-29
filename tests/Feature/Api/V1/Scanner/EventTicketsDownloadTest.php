@@ -6,6 +6,7 @@ use App\Models\Order;
 use App\Models\Ticket;
 use App\Models\TicketType;
 use App\Models\User;
+use App\Services\TicketSignatureService;
 use Laravel\Sanctum\Sanctum;
 
 beforeEach(function () {
@@ -63,12 +64,44 @@ test('it lists only the tickets belonging to paid orders for that event', functi
             'data' => [
                 [
                     'id' => $paidTicket->id,
-                    'token' => $paidTicket->qr_payload,
+                    'token' => "{$paidTicket->qr_payload}.{$paidTicket->signature}",
                     'holder_name' => 'Fatou Sow',
                     'ticket_type' => 'VIP',
                 ],
             ],
         ]);
+});
+
+test('the downloaded token matches the exact string encoded in the physical QR', function () {
+    // Regression test: the offline scanner app matches a scanned QR
+    // against this token by exact string equality, so it must be the
+    // full "payload.signature" string — not just the payload half — or
+    // every offline scan fails against a real, valid ticket. This uses a
+    // genuinely signed ticket (not the factory's independently-fake
+    // qr_payload/signature) and proves round-trip decodability through
+    // the real signature service, exactly like a live QR scan would.
+    Sanctum::actingAs($this->scanner, ['*']);
+
+    $event = Event::factory()->create();
+    $ticketType = TicketType::factory()->for($event)->create();
+    $order = Order::factory()->for($event)->paid()->create();
+    $ticket = Ticket::factory()->for($order)->for($ticketType)->create();
+
+    $signatureService = app(TicketSignatureService::class);
+    $qrString = $signatureService->generatePayload($ticket);
+    [$payload, $signature] = explode('.', $qrString, 2);
+    $ticket->update(['qr_payload' => $payload, 'signature' => $signature]);
+
+    $response = $this->getJson("/api/v1/scanner/events/{$event->id}/tickets");
+
+    $response->assertOk();
+    $token = $response->json('data.0.token');
+
+    expect($token)->toBe($qrString);
+
+    $verification = $signatureService->verifySignature($token);
+    expect($verification['valid'])->toBeTrue()
+        ->and($verification['data']['ticket_id'])->toBe($ticket->id);
 });
 
 test('it excludes tickets belonging to other events', function () {

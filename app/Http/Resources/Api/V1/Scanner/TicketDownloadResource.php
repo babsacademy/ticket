@@ -20,7 +20,13 @@ class TicketDownloadResource extends JsonResource
     {
         return [
             'id' => $this->id,
-            'token' => $this->qr_payload,
+            // The physical QR encodes "payload.signature" (see
+            // TicketSignatureService::generatePayload()) — qr_payload and
+            // signature are stored in separate columns, but the offline
+            // scanner app matches a scanned code against this token by
+            // exact string equality, so it needs the full signed string,
+            // not just the payload half.
+            'token' => "{$this->qr_payload}.{$this->signature}",
             'holder_name' => $this->holder_name,
             'ticket_type' => $this->ticketType->name,
         ];
