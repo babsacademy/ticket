@@ -61,6 +61,49 @@ test('admins can view the create event page', function () {
     );
 });
 
+test('when no organizer account exists, the create page falls back to the current admin, pre-selected', function () {
+    $admin = User::factory()->admin()->create();
+
+    $response = $this->actingAs($admin)->get(route('admin.events.create'));
+
+    $response->assertOk()->assertInertia(fn (Assert $page) => $page
+        ->component('admin/events/create')
+        ->has('organizers', 1)
+        ->where('organizers.0.id', $admin->id)
+        ->where('organizers.0.role', 'admin')
+        ->where('defaultOrganizerId', $admin->id)
+    );
+});
+
+test('the create page does not fall back to the admin when a real organizer already exists', function () {
+    $admin = User::factory()->admin()->create();
+    User::factory()->organizer()->create();
+
+    $response = $this->actingAs($admin)->get(route('admin.events.create'));
+
+    $response->assertOk()->assertInertia(fn (Assert $page) => $page
+        ->component('admin/events/create')
+        ->where('defaultOrganizerId', null)
+    );
+});
+
+test('an admin account is accepted as the event organizer', function () {
+    $admin = User::factory()->admin()->create();
+
+    $response = $this->actingAs($admin)->post(route('admin.events.store'), [
+        'organizer_id' => $admin->id,
+        'title' => 'Événement auto-organisé',
+        'date' => '2026-09-15T20:00',
+        'venue' => 'Un lieu',
+        'capacity' => 100,
+        'status' => EventStatus::Draft->value,
+        'ticket_types' => [['name' => 'Standard', 'price' => 1000]],
+    ]);
+
+    $response->assertSessionHasNoErrors();
+    expect(Event::firstOrFail()->organizer_id)->toBe($admin->id);
+});
+
 test('admins can create an event with ticket types', function () {
     Storage::fake('public');
 
@@ -115,6 +158,43 @@ test('creating an event without any ticket type fails validation', function () {
 
     $response->assertSessionHasErrors('ticket_types');
     expect(Event::count())->toBe(0);
+});
+
+test('validation errors are rendered in French', function () {
+    $admin = User::factory()->admin()->create();
+
+    $response = $this->actingAs($admin)->post(route('admin.events.store'), [
+        'title' => 'Événement',
+        'date' => '2026-09-15T20:00',
+        'venue' => 'Un lieu',
+        'capacity' => 100,
+        'status' => EventStatus::Draft->value,
+        'cover_image' => UploadedFile::fake()->image('cover.jpg')->size(5121),
+        'ticket_types' => [['name' => 'Standard', 'price' => 1000]],
+    ]);
+
+    $response->assertSessionHasErrors([
+        'organizer_id' => 'Le champ organisateur est obligatoire.',
+        'cover_image' => "L'image de couverture ne doit pas dépasser 5 Mo.",
+    ]);
+});
+
+test('a cover image up to 5 Mo is accepted', function () {
+    Storage::fake('public');
+    $admin = User::factory()->admin()->create();
+
+    $response = $this->actingAs($admin)->post(route('admin.events.store'), [
+        'organizer_id' => $admin->id,
+        'title' => 'Événement',
+        'date' => '2026-09-15T20:00',
+        'venue' => 'Un lieu',
+        'capacity' => 100,
+        'status' => EventStatus::Draft->value,
+        'cover_image' => UploadedFile::fake()->image('cover.jpg')->size(5120),
+        'ticket_types' => [['name' => 'Standard', 'price' => 1000]],
+    ]);
+
+    $response->assertSessionHasNoErrors();
 });
 
 test('an organizer_id that does not belong to an organizer fails validation', function () {

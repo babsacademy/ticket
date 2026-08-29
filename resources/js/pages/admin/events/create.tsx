@@ -8,14 +8,17 @@ type Organizer = {
     id: number;
     name: string;
     email: string;
+    role: 'organizer' | 'admin';
 };
 
 export default function EventsCreate({
     organizers,
     statuses,
+    defaultOrganizerId,
 }: {
     organizers: Organizer[];
     statuses: string[];
+    defaultOrganizerId: number | null;
 }) {
     return (
         <>
@@ -32,6 +35,11 @@ export default function EventsCreate({
                     organizers={organizers}
                     statuses={statuses}
                     submitLabel="Créer l'événement"
+                    defaults={
+                        defaultOrganizerId
+                            ? { organizer_id: defaultOrganizerId }
+                            : {}
+                    }
                 />
             </div>
         </>

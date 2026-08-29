@@ -18,6 +18,7 @@ type Organizer = {
     id: number;
     name: string;
     email: string;
+    role: 'organizer' | 'admin';
 };
 
 type TicketTypeInput = {
@@ -123,7 +124,7 @@ export default function AdminEventForm({
                                             key={organizer.id}
                                             value={String(organizer.id)}
                                         >
-                                            {organizer.name} ({organizer.email})
+                                            {`${organizer.name} (${organizer.role === 'admin' ? 'admin' : organizer.email})`}
                                         </SelectItem>
                                     ))}
                                 </SelectContent>

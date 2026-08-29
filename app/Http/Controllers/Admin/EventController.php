@@ -13,6 +13,7 @@ use App\Models\Ticket;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -62,11 +63,12 @@ class EventController extends Controller
     /**
      * Show the form for creating a new event.
      */
-    public function create(): Response
+    public function create(Request $request): Response
     {
         return Inertia::render('admin/events/create', [
-            'organizers' => $this->organizers(),
+            'organizers' => $this->organizers($request),
             'statuses' => $this->statuses(),
+            'defaultOrganizerId' => $this->defaultOrganizerId($request),
         ]);
     }
 
@@ -148,7 +150,7 @@ class EventController extends Controller
     /**
      * Show the form for editing an existing event.
      */
-    public function edit(Event $event): Response
+    public function edit(Request $request, Event $event): Response
     {
         $event->load('ticketTypes');
 
@@ -170,7 +172,7 @@ class EventController extends Controller
                     'price' => (float) $ticketType->price,
                 ]),
             ],
-            'organizers' => $this->organizers(),
+            'organizers' => $this->organizers($request),
             'statuses' => $this->statuses(),
         ]);
     }
@@ -212,17 +214,44 @@ class EventController extends Controller
     }
 
     /**
-     * Get the list of users eligible to organize an event.
+     * Get the list of users eligible to organize an event. Falls back to
+     * the currently authenticated admin when no organizer-role account
+     * exists yet, so the form is never stuck with an empty, unusable
+     * select — see defaultOrganizerId(), which pre-selects that same
+     * fallback on the create form.
      *
      * @return array<int, array<string, mixed>>
      */
-    private function organizers(): array
+    private function organizers(Request $request): array
     {
-        return User::query()
+        $organizers = User::query()
             ->where('role', UserRole::Organizer)
             ->orderBy('name')
-            ->get(['id', 'name', 'email'])
-            ->toArray();
+            ->get(['id', 'name', 'email', 'role']);
+
+        if ($organizers->isEmpty() && $request->user() instanceof User) {
+            $organizers = collect([$request->user()]);
+        }
+
+        return $organizers->map(fn (User $organizer): array => [
+            'id' => $organizer->id,
+            'name' => $organizer->name,
+            'email' => $organizer->email,
+            'role' => $organizer->role->value,
+        ])->all();
+    }
+
+    /**
+     * The organizer to pre-select on the create form: the current admin
+     * when no organizer-role account exists yet (see organizers() above),
+     * otherwise null so the placeholder shows and the admin picks
+     * explicitly.
+     */
+    private function defaultOrganizerId(Request $request): ?int
+    {
+        $hasOrganizer = User::query()->where('role', UserRole::Organizer)->exists();
+
+        return $hasOrganizer ? null : $request->user()?->id;
     }
 
     /**

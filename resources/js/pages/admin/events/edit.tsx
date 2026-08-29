@@ -8,6 +8,7 @@ type Organizer = {
     id: number;
     name: string;
     email: string;
+    role: 'organizer' | 'admin';
 };
 
 type EventDetails = {
