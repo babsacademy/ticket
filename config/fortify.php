@@ -161,7 +161,11 @@ return [
     */
 
     'features' => [
-        Features::registration(),
+        // Public sign-up is closed: only an admin can create accounts (via
+        // the dashboard). /register is instead caught by a dedicated route
+        // in routes/auth.php that redirects to /login with an explanatory
+        // message — see App\Http\Controllers\Auth\RegistrationClosedController.
+        // Features::registration(),
         Features::resetPasswords(),
         Features::emailVerification(),
         Features::twoFactorAuthentication([

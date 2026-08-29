@@ -1,7 +1,14 @@
 <?php
 
+use App\Http\Controllers\Auth\RegistrationClosedController;
 use App\Http\Controllers\Auth\TwoFactorEmailChallengeController;
 use Illuminate\Support\Facades\Route;
+
+// Public sign-up is closed (Features::registration() is disabled in
+// config/fortify.php, so Fortify never registers its own /register routes).
+// Reuses Fortify's own route name ('register') so anything still pointing
+// at it keeps resolving instead of 404ing.
+Route::match(['get', 'post'], 'register', RegistrationClosedController::class)->name('register');
 
 // Email OTP challenge for admin logins (see
 // App\Actions\Fortify\RedirectAdminToEmailTwoFactorChallenge). Deliberately

@@ -1,5 +1,5 @@
 import { Link } from '@inertiajs/react';
-import AppLogoIcon from '@/components/app-logo-icon';
+import { Ticket } from 'lucide-react';
 import { home } from '@/routes';
 import type { AuthLayoutProps } from '@/types';
 
@@ -15,12 +15,14 @@ export default function AuthSimpleLayout({
                     <div className="flex flex-col items-center gap-4">
                         <Link
                             href={home()}
-                            className="flex flex-col items-center gap-2 font-medium"
+                            className="mb-1 flex flex-col items-center gap-2 font-medium"
                         >
-                            <div className="mb-1 flex h-9 w-9 items-center justify-center rounded-md">
-                                <AppLogoIcon className="size-9 fill-current text-[var(--foreground)] dark:text-white" />
-                            </div>
-                            <span className="sr-only">{title}</span>
+                            <span className="flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+                                <Ticket className="size-5" />
+                            </span>
+                            <span className="text-sm font-semibold tracking-tight">
+                                ScanTicket
+                            </span>
                         </Link>
 
                         <div className="space-y-2 text-center">

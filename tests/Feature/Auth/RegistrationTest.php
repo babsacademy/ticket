@@ -1,25 +1,23 @@
 <?php
 
-use Laravel\Fortify\Features;
+use App\Models\User;
 
-beforeEach(function () {
-    $this->skipUnlessFortifyHas(Features::registration());
-});
-
-test('registration screen can be rendered', function () {
+test('GET /register redirects to the login page instead of showing a form', function () {
     $response = $this->get(route('register'));
 
-    $response->assertOk();
+    $response->assertRedirect(route('login'));
+    $response->assertSessionHas('status', "L'inscription n'est pas ouverte au public.");
 });
 
-test('new users can register', function () {
-    $response = $this->post(route('register.store'), [
-        'name' => 'Test User',
-        'email' => 'test@example.com',
+test('POST /register redirects to the login page instead of creating an account', function () {
+    $response = $this->post(route('register'), [
+        'name' => 'Attacker',
+        'email' => 'attacker@example.com',
         'password' => 'password',
         'password_confirmation' => 'password',
     ]);
 
-    $this->assertAuthenticated();
-    $response->assertRedirect(route('dashboard', absolute: false));
+    $response->assertRedirect(route('login'));
+    $this->assertGuest();
+    expect(User::query()->where('email', 'attacker@example.com')->exists())->toBeFalse();
 });
