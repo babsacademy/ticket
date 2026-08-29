@@ -239,12 +239,12 @@ export default function PublicEventShow({
                                             id="buyer_phone"
                                             name="buyer_phone"
                                             type="tel"
-                                            placeholder="+221771234567"
+                                            placeholder="+221773698046"
                                             required
                                         />
                                         <p className="text-xs text-muted-foreground">
-                                            Formats acceptés : +221771234567,
-                                            00221771234567 ou 71234567 (sans
+                                            Formats acceptés : +221773698046,
+                                            00221773698046 ou 773698046 (sans
                                             espaces).
                                         </p>
                                         <InputError

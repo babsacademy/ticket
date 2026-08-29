@@ -261,9 +261,10 @@ test('valid Senegalese phone number formats are accepted', function (string $pho
 
     $response->assertSessionDoesntHaveErrors('buyer_phone');
 })->with([
-    'international with +' => '+221771234567',
-    'international with 00' => '00221771234567',
-    'local format' => '71234567',
+    'international with +' => '+221773698046',
+    'international with 00' => '00221773698046',
+    'local format starting with 7' => '773698046',
+    'local format starting with 3' => '331234567',
 ]);
 
 test('invalid phone number formats are rejected', function (string $phone) {
@@ -281,8 +282,10 @@ test('invalid phone number formats are rejected', function (string $phone) {
     $response->assertSessionHasErrors('buyer_phone');
     expect(Order::count())->toBe(0);
 })->with([
-    'missing country code, local number does not start with 7' => '0771234567',
-    'local number too short' => '7123456',
+    'missing country code, local number does not start with 3 or 7' => '0771234567',
+    'local number does not start with 3 or 7' => '912345678',
+    'local number too short (8 digits — the old, buggy 7\d{7} format)' => '77369804',
+    'local number too short (7 digits)' => '7123456',
     'contains letters' => '+221abcdefghi',
     'wrong country code' => '+33612345678',
     'contains spaces' => '+221 77 123 45 67',

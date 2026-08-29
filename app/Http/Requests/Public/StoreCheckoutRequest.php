@@ -17,10 +17,10 @@ class StoreCheckoutRequest extends FormRequest
 
     /**
      * Matches Senegalese phone numbers in international (+221/00221 followed
-     * by the 9-digit subscriber number) or local (7 followed by 7 digits)
-     * format.
+     * by the 9-digit subscriber number) or local (9-digit subscriber number
+     * starting with 3 or 7) format.
      */
-    private const SENEGAL_PHONE_REGEX = '/^(\+221\d{9}|00221\d{9}|7\d{7})$/';
+    private const SENEGAL_PHONE_REGEX = '/^(\+221\d{9}|00221\d{9}|[37]\d{8})$/';
 
     /**
      * Get the validation rules that apply to the request.
@@ -47,7 +47,7 @@ class StoreCheckoutRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'buyer_phone.regex' => 'Veuillez saisir un numéro de téléphone sénégalais valide (+221771234567, 00221771234567 ou 71234567).',
+            'buyer_phone.regex' => 'Veuillez saisir un numéro de téléphone sénégalais valide (+221773698046, 00221773698046 ou 773698046).',
             'items.*.quantity.max' => 'Vous ne pouvez pas acheter plus de '.self::MAX_QUANTITY_PER_TYPE.' billets par type.',
         ];
     }
