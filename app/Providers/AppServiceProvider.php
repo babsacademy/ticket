@@ -3,8 +3,11 @@
 namespace App\Providers;
 
 use Carbon\CarbonImmutable;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
@@ -25,6 +28,7 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->configureDefaults();
+        $this->configureRateLimiting();
     }
 
     /**
@@ -56,5 +60,20 @@ class AppServiceProvider extends ServiceProvider
                 ->uncompromised()
             : null,
         );
+    }
+
+    /**
+     * Configure rate limiters for the guest-facing checkout form — protects
+     * against spam/bot order submissions and PDF-download scraping, both
+     * keyed by IP since checkout is unauthenticated.
+     */
+    protected function configureRateLimiting(): void
+    {
+        RateLimiter::for('checkout', fn (Request $request): array => [
+            Limit::perMinute(5)->by($request->ip()),
+            Limit::perHour(20)->by($request->ip()),
+        ]);
+
+        RateLimiter::for('ticket-pdf', fn (Request $request): Limit => Limit::perMinute(10)->by($request->ip()));
     }
 }

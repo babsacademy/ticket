@@ -6,6 +6,7 @@ use App\Http\Middleware\HandleInertiaRequests;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Exceptions\ThrottleRequestsException;
 use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
 use Illuminate\Http\Request;
 
@@ -33,4 +34,14 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*') || $request->expectsJson(),
         );
+
+        $exceptions->render(function (ThrottleRequestsException $e, Request $request) {
+            $message = 'Trop de tentatives. Veuillez patienter quelques minutes avant de réessayer.';
+
+            if ($request->is('api/*') || $request->expectsJson()) {
+                return response()->json(['message' => $message], 429);
+            }
+
+            return response($message, 429);
+        });
     })->create();

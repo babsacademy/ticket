@@ -13,7 +13,7 @@ Route::get('/user', function (Request $request) {
 })->middleware('auth:sanctum');
 
 Route::prefix('v1/scanner')->group(function (): void {
-    Route::get('ping', fn() => response()->json(['status' => 'ok', 'app' => 'ScanTicket']));
+    Route::get('ping', fn () => response()->json(['status' => 'ok', 'app' => 'ScanTicket']));
     Route::post('login', [AuthController::class, 'store']);
 
     Route::middleware(['auth:sanctum', 'role:scanner'])->group(function (): void {
@@ -24,4 +24,9 @@ Route::prefix('v1/scanner')->group(function (): void {
     });
 });
 
+// Deliberately NOT behind `throttle:checkout` (or any IP-keyed limiter):
+// this is Wave's own server calling us, not a guest browser — it can be
+// delivered from a shared/rotating IP pool, so per-IP throttling risks
+// silently dropping real payment confirmations. It's already protected by
+// signature verification instead (WavePaymentGateway::verifyWebhookSignature()).
 Route::post('v1/webhooks/wave', [CheckoutController::class, 'webhook'])->name('webhooks.wave');
