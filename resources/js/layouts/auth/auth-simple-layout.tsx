@@ -21,7 +21,7 @@ export default function AuthSimpleLayout({
                                 <Ticket className="size-5" />
                             </span>
                             <span className="text-sm font-semibold tracking-tight">
-                                ScanTicket
+                                TerangaTicket
                             </span>
                         </Link>
 

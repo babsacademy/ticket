@@ -17,10 +17,10 @@
                             <table role="presentation" cellpadding="0" cellspacing="0">
                                 <tr>
                                     <td style="width:34px; vertical-align:middle;">
-                                        <div style="width:30px; height:30px; background-color:#ffffff; border-radius:6px; text-align:center; line-height:30px; font-size:13px; font-weight:bold; color:#f97316;">ST</div>
+                                        <div style="width:30px; height:30px; background-color:#ffffff; border-radius:6px; text-align:center; line-height:30px; font-size:13px; font-weight:bold; color:#f97316;">TT</div>
                                     </td>
                                     <td style="vertical-align:middle; padding-left:10px;">
-                                        <div style="color:#ffffff; font-size:17px; font-weight:bold;">ScanTicket</div>
+                                        <div style="color:#ffffff; font-size:17px; font-weight:bold;">TerangaTicket</div>
                                         <div style="color:#ffffff; font-size:10px;">{{ $platformName }}</div>
                                     </td>
                                 </tr>
@@ -79,7 +79,7 @@
                     {{-- Footer --}}
                     <tr>
                         <td style="background-color:#f4f4f5; padding:14px 28px; text-align:center; font-size:11px; color:#71717a;">
-                            Billetterie sécurisée — {{ $platformName }}
+                            {{ $platformName }} — Billetterie sécurisée
                         </td>
                     </tr>
                 </table>

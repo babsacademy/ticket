@@ -1,4 +1,4 @@
-import { Link, usePage } from '@inertiajs/react';
+import { Link } from '@inertiajs/react';
 import { Ticket } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { home, login } from '@/routes';
@@ -10,7 +10,6 @@ export default function PublicLayout({
     children: ReactNode;
     wide?: boolean;
 }) {
-    const { name } = usePage().props;
     const containerWidth = wide ? 'max-w-6xl' : 'max-w-4xl';
 
     return (
@@ -25,10 +24,10 @@ export default function PublicLayout({
                         </span>
                         <span className="flex flex-col leading-tight">
                             <span className="text-base font-semibold tracking-tight">
-                                ScanTicket
+                                TerangaTicket
                             </span>
                             <span className="text-xs text-muted-foreground">
-                                {name}
+                                La billetterie du Sénégal
                             </span>
                         </span>
                     </Link>

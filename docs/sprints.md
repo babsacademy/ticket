@@ -1,4 +1,4 @@
-# Plan des Sprints — E-Ticketing Sénégal
+# Plan des Sprints — TerangaTicket
 
 Durée de chaque sprint : **2 semaines**. Priorité : livrer un MVP fonctionnel end-to-end avant d'ajouter des fonctionnalités avancées.
 

@@ -194,7 +194,7 @@ Use Wayfinder to generate TypeScript functions for Laravel routes. Import from `
 
 </laravel-boost-guidelines>
 
-# E-Ticketing Sénégal — Guide Agents IA
+# TerangaTicket — Guide Agents IA
 
 ## Contexte Projet (résumé rapide)
 

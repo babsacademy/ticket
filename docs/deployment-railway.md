@@ -1,6 +1,6 @@
 # Déploiement sur Railway
 
-Ce guide décrit comment déployer E-Ticketing Sénégal sur [Railway](https://railway.com) : un service **web** (Nginx + PHP-FPM, servant l'app Laravel/Inertia) et un service **worker** (`php artisan queue:work`, pour `GenerateTicketsJob` et `SendTicketNotificationJob`), tous deux construits depuis le même `Dockerfile`.
+Ce guide décrit comment déployer TerangaTicket sur [Railway](https://railway.com) : un service **web** (Nginx + PHP-FPM, servant l'app Laravel/Inertia) et un service **worker** (`php artisan queue:work`, pour `GenerateTicketsJob` et `SendTicketNotificationJob`), tous deux construits depuis le même `Dockerfile`.
 
 ## Fichiers concernés
 

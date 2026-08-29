@@ -13,7 +13,7 @@ Route::get('/user', function (Request $request) {
 })->middleware('auth:sanctum');
 
 Route::prefix('v1/scanner')->group(function (): void {
-    Route::get('ping', fn () => response()->json(['status' => 'ok', 'app' => 'ScanTicket']));
+    Route::get('ping', fn () => response()->json(['status' => 'ok', 'app' => 'TerangaTicket']));
     Route::post('login', [AuthController::class, 'store']);
 
     Route::middleware(['auth:sanctum', 'role:scanner'])->group(function (): void {

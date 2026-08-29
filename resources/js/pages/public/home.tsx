@@ -55,7 +55,7 @@ export default function PublicHome({ events }: { events: EventCard[] }) {
 
                     <div className="relative mx-auto max-w-2xl space-y-5 text-center">
                         <Badge className="border-white/20 bg-white/10 text-white backdrop-blur">
-                            La billetterie du Sénégal
+                            TerangaTicket
                         </Badge>
                         <h1 className="text-4xl font-extrabold tracking-tight text-white sm:text-5xl">
                             Vos événements au Sénégal

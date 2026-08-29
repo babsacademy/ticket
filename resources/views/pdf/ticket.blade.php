@@ -21,10 +21,10 @@
                     <table style="border-collapse:collapse;">
                         <tr>
                             <td style="width:34px; vertical-align:middle;">
-                                <div style="width:30px; height:30px; background-color:#ffffff; border-radius:6px; text-align:center; line-height:30px; font-size:13px; font-weight:bold; color:#f97316;">ST</div>
+                                <div style="width:30px; height:30px; background-color:#ffffff; border-radius:6px; text-align:center; line-height:30px; font-size:13px; font-weight:bold; color:#f97316;">TT</div>
                             </td>
                             <td style="vertical-align:middle; padding-left:10px;">
-                                <div style="color:#ffffff; font-size:17px; font-weight:bold;">ScanTicket</div>
+                                <div style="color:#ffffff; font-size:17px; font-weight:bold;">TerangaTicket</div>
                                 <div style="color:#ffffff; font-size:10px;">{{ $platformName }}</div>
                             </td>
                         </tr>
@@ -90,7 +90,7 @@
         <table style="width:100%; border-collapse:collapse; background-color:#f4f4f5;">
             <tr>
                 <td style="padding:12px 20px; text-align:center; font-size:10px; color:#71717a;">
-                    Billetterie sécurisée — {{ $platformName }}
+                    {{ $platformName }} — Billetterie sécurisée
                 </td>
             </tr>
         </table>

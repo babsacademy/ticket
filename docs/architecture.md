@@ -1,4 +1,4 @@
-# Architecture — E-Ticketing Sénégal
+# Architecture — TerangaTicket
 
 ## Vue d'Ensemble
 
