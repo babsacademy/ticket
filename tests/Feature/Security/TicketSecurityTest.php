@@ -116,6 +116,39 @@ test('a scanner account cannot reach the admin back-office', function () {
     $this->actingAs($scanner)->get(route('admin.events.create'))->assertForbidden();
 });
 
+// 7. Scan state on download: only authenticated scanners may read
+// is_scanned/scanned_at, and the response must never leak scanned_by
+// (which scanner checked the ticket in).
+test('ticket download scan state is only exposed to authenticated scanners and omits scanned_by', function () {
+    $event = Event::factory()->create();
+    $ticketType = TicketType::factory()->for($event)->create();
+    $paidOrder = Order::factory()->for($event)->paid()->create();
+    $scannerWhoChecked = User::factory()->scanner()->create();
+    $scannedAt = now()->subMinutes(10);
+
+    Ticket::factory()->for($paidOrder)->for($ticketType)->create([
+        'scanned_at' => $scannedAt,
+        'scanned_by' => $scannerWhoChecked->id,
+    ]);
+
+    $anonymous = $this->getJson("/api/v1/scanner/events/{$event->id}/tickets");
+    $anonymous->assertUnauthorized();
+
+    Sanctum::actingAs(User::factory()->organizer()->create(), ['*']);
+    $wrongRole = $this->getJson("/api/v1/scanner/events/{$event->id}/tickets");
+    $wrongRole->assertForbidden();
+
+    $scanner = User::factory()->scanner()->create();
+    Sanctum::actingAs($scanner, ['*']);
+    $authorized = $this->getJson("/api/v1/scanner/events/{$event->id}/tickets");
+
+    $authorized->assertOk()
+        ->assertJsonPath('data.0.is_scanned', true)
+        ->assertJsonPath('data.0.scanned_at', $scannedAt->toIso8601String());
+
+    expect($authorized->json('data.0'))->not->toHaveKey('scanned_by');
+});
+
 // 6. Checkout rate limiting: a scripted burst of submissions past the
 // documented 5-per-minute limit must be throttled, not merely slowed down.
 test('a burst of checkout submissions past the limit is throttled with 429', function () {

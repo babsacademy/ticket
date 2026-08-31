@@ -33,6 +33,8 @@ class EventController extends Controller
 
     /**
      * List an event's valid (paid) tickets, for offline download by the scanner app.
+     * Each ticket includes is_scanned and scanned_at so a new device can
+     * seed local scan state; scanned_by is never exposed here.
      */
     public function tickets(Event $event): AnonymousResourceCollection
     {
