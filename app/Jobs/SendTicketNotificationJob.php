@@ -10,7 +10,6 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
-use Illuminate\Support\Facades\Storage;
 use Throwable;
 
 class SendTicketNotificationJob implements ShouldQueue
@@ -28,9 +27,11 @@ class SendTicketNotificationJob implements ShouldQueue
     /**
      * Notify the buyer that their tickets are ready. Prefers email (with a
      * "Télécharger mes billets" link) when a buyer_email was provided;
-     * otherwise falls back to WhatsApp (with the QR code as an image
-     * attachment) per ticket, and to a text-only SMS when the WhatsApp send
-     * fails.
+     * otherwise falls back to a text WhatsApp message per ticket, and to
+     * SMS when the WhatsApp send fails. No QR image is attached to either —
+     * the QR only ever exists rendered on demand into the PDF
+     * (CheckoutController::ticketPdf()), never as a standalone file
+     * anywhere a notification could link to.
      */
     public function handle(TwilioNotifier $notifier): void
     {
@@ -78,11 +79,7 @@ class SendTicketNotificationJob implements ShouldQueue
                 $ticket->signature,
             );
 
-            $mediaUrl = $ticket->qr_image_path
-                ? url(Storage::disk('public')->url($ticket->qr_image_path))
-                : null;
-
-            $sent = $mediaUrl && $notifier->sendWhatsApp($order->buyer_phone, $message, $mediaUrl);
+            $sent = $notifier->sendWhatsApp($order->buyer_phone, $message);
 
             if (! $sent) {
                 $sent = $notifier->sendSms($order->buyer_phone, $message);

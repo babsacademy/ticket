@@ -8,8 +8,10 @@ use App\Http\Requests\Api\V1\Scanner\ScannerLoginRequest;
 use App\Http\Resources\Api\V1\Scanner\ScannerResource;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
+use Laravel\Sanctum\PersonalAccessToken;
 
 class AuthController extends Controller
 {
@@ -22,14 +24,15 @@ class AuthController extends Controller
 
         $user = User::query()->where('email', $validated['email'])->first();
 
-        if (! $user || ! Hash::check($validated['password'], $user->password)) {
+        // Deliberately one generic failure for "wrong password" AND "right
+        // password, wrong role": returning a distinct response for the
+        // latter (e.g. 403) would let an attacker confirm a guessed
+        // credential pair is genuinely valid just by trying it here,
+        // regardless of whether that account is actually a scanner.
+        if (! $user || ! Hash::check($validated['password'], $user->password) || $user->role !== UserRole::Scanner) {
             throw ValidationException::withMessages([
                 'email' => ['Les identifiants fournis sont incorrects.'],
             ]);
-        }
-
-        if ($user->role !== UserRole::Scanner) {
-            abort(403, "Ce compte n'a pas les droits de scanner.");
         }
 
         $token = $user->createToken($validated['device_name'] ?? 'scanner-device')->plainTextToken;
@@ -38,5 +41,21 @@ class AuthController extends Controller
             'token' => $token,
             'scanner' => new ScannerResource($user),
         ]);
+    }
+
+    /**
+     * Revoke the token used to authenticate this request. Only the current
+     * device's session ends — other devices logged in on the same account
+     * keep working.
+     */
+    public function destroy(Request $request): JsonResponse
+    {
+        $token = $request->user()?->currentAccessToken();
+
+        if ($token instanceof PersonalAccessToken) {
+            $token->delete();
+        }
+
+        return response()->json(['message' => 'Déconnecté.']);
     }
 }

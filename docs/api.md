@@ -84,6 +84,8 @@ Authentifie un agent scanner et retourne un token Sanctum.
 
 #### Réponse 422 — Identifiants invalides
 
+Réponse volontairement générique : un mot de passe incorrect, un email inconnu, et un compte valide mais qui n'a pas le rôle `scanner` renvoient exactement la même réponse. Distinguer ces cas laisserait un attaquant confirmer qu'un couple email/mot de passe est valide simplement en observant un code différent pour "mauvais rôle".
+
 ```json
 {
   "message": "Les identifiants fournis sont incorrects.",
@@ -93,11 +95,13 @@ Authentifie un agent scanner et retourne un token Sanctum.
 }
 ```
 
-#### Réponse 403 — Compte non-scanner
+#### Réponse 429 — Trop de tentatives
+
+5 tentatives par minute, par combinaison email (normalisé) + IP.
 
 ```json
 {
-  "message": "Ce compte n'a pas les droits de scanner."
+  "message": "Trop de tentatives. Veuillez patienter quelques minutes avant de réessayer."
 }
 ```
 

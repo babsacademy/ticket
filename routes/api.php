@@ -14,9 +14,10 @@ Route::get('/user', function (Request $request) {
 
 Route::prefix('v1/scanner')->group(function (): void {
     Route::get('ping', fn () => response()->json(['status' => 'ok', 'app' => 'TerangaTicket']));
-    Route::post('login', [AuthController::class, 'store']);
+    Route::post('login', [AuthController::class, 'store'])->middleware('throttle:scanner-login');
 
-    Route::middleware(['auth:sanctum', 'role:scanner'])->group(function (): void {
+    Route::middleware(['auth:sanctum', 'role:scanner', 'throttle:scanner-api'])->group(function (): void {
+        Route::post('logout', [AuthController::class, 'destroy']);
         Route::get('events', [EventController::class, 'index']);
         Route::get('events/{event}/tickets', [EventController::class, 'tickets']);
         Route::post('tickets/verify', TicketVerifyController::class);

@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 use Illuminate\Support\Carbon;
@@ -107,5 +108,17 @@ class Event extends Model
     public function tickets(): HasManyThrough
     {
         return $this->hasManyThrough(Ticket::class, TicketType::class);
+    }
+
+    /**
+     * Scanner accounts assigned to work this event — see
+     * Api\V1\Scanner\EventController, which scopes both the event list and
+     * the ticket download to this assignment.
+     *
+     * @return BelongsToMany<User, $this>
+     */
+    public function assignedScanners(): BelongsToMany
+    {
+        return $this->belongsToMany(User::class, 'scanner_event');
     }
 }

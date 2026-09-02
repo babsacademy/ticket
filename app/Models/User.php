@@ -8,6 +8,7 @@ use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -83,5 +84,17 @@ class User extends Authenticatable implements PasskeyUser
     public function twoFactorCodes(): HasMany
     {
         return $this->hasMany(TwoFactorCode::class);
+    }
+
+    /**
+     * Events this scanner account is assigned to work — see
+     * Api\V1\Scanner\EventController, which scopes both the event list and
+     * the ticket download to this assignment.
+     *
+     * @return BelongsToMany<Event, $this>
+     */
+    public function assignedEvents(): BelongsToMany
+    {
+        return $this->belongsToMany(Event::class, 'scanner_event');
     }
 }

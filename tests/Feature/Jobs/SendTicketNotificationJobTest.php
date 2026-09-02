@@ -33,16 +33,20 @@ test('it emails the buyer and skips WhatsApp/SMS when buyer_email is set', funct
     );
 });
 
-test('it sends a WhatsApp message with the QR image for each ticket', function () {
+test('it sends a WhatsApp text message for each ticket, with no image attachment', function () {
+    // Regression test: the WhatsApp send used to attach a QR image read
+    // from the public disk (qr_image_path) — that storage is gone (see
+    // GenerateTicketsJob), so this must still send a plain text message
+    // rather than erroring or silently dropping the notification.
     $event = Event::factory()->create(['title' => 'Dakar Jazz Festival']);
     $ticketType = TicketType::factory()->for($event)->create(['name' => 'VIP']);
     $order = Order::factory()->for($event)->create(['buyer_phone' => '+221771234567']);
-    Ticket::factory()->for($order)->for($ticketType)->count(2)->create(['qr_image_path' => 'tickets/abc.png']);
+    Ticket::factory()->for($order)->for($ticketType)->count(2)->create();
 
     $this->mock(TwilioNotifier::class, function ($mock) {
         $mock->shouldReceive('sendWhatsApp')
             ->twice()
-            ->with('+221771234567', Mockery::type('string'), Mockery::type('string'))
+            ->with('+221771234567', Mockery::type('string'))
             ->andReturn(true);
         $mock->shouldNotReceive('sendSms');
     });
@@ -54,7 +58,7 @@ test('it falls back to SMS when the WhatsApp send fails', function () {
     $event = Event::factory()->create();
     $ticketType = TicketType::factory()->for($event)->create();
     $order = Order::factory()->for($event)->create(['buyer_phone' => '+221771234567']);
-    Ticket::factory()->for($order)->for($ticketType)->create(['qr_image_path' => 'tickets/abc.png']);
+    Ticket::factory()->for($order)->for($ticketType)->create();
 
     $this->mock(TwilioNotifier::class, function ($mock) {
         $mock->shouldReceive('sendWhatsApp')->once()->andReturn(false);

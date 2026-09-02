@@ -3,9 +3,18 @@
 namespace App\Services;
 
 use App\Models\Ticket;
+use RuntimeException;
 
 class TicketSignatureService
 {
+    /**
+     * Minimum acceptable length for APP_TICKET_SECRET. An empty or short
+     * secret would make the HMAC brute-forceable (or, if empty, trivially
+     * forgeable), so signing/verifying refuses to run at all rather than
+     * silently produce a weak signature.
+     */
+    private const MIN_SECRET_LENGTH = 32;
+
     /**
      * Generate the signed QR string ("payload.signature") for a ticket.
      */
@@ -68,9 +77,20 @@ class TicketSignatureService
 
     /**
      * Compute the HMAC-SHA256 signature of a base64-encoded payload.
+     *
+     * @throws RuntimeException if APP_TICKET_SECRET is missing or too short.
      */
     private function sign(string $payload): string
     {
-        return hash_hmac('sha256', $payload, (string) config('tickets.secret'));
+        $secret = (string) config('tickets.secret');
+
+        if (strlen($secret) < self::MIN_SECRET_LENGTH) {
+            throw new RuntimeException(
+                'APP_TICKET_SECRET est absent ou trop court (minimum '.self::MIN_SECRET_LENGTH.' caractères) — '
+                .'impossible de signer ou vérifier un billet en toute sécurité.',
+            );
+        }
+
+        return hash_hmac('sha256', $payload, $secret);
     }
 }

@@ -79,13 +79,29 @@ class CheckoutController extends Controller
             return $order;
         });
 
-        // Free tickets (total = 0) and dev/test environments without a Wave
-        // account configured (PAYMENT_ENABLED=false) skip Wave entirely: the
-        // order is confirmed immediately instead of waiting for a webhook.
-        if ($amounts['total'] <= 0.0 || ! config('tickets.payment_enabled')) {
+        // Free tickets (total = 0) skip Wave entirely: the order is
+        // confirmed immediately instead of waiting for a webhook.
+        if ($amounts['total'] <= 0.0) {
             $this->markOrderPaidAndGenerateTickets($order);
 
             return to_route('checkout.confirmation', $order);
+        }
+
+        // PAYMENT_ENABLED=false is a dev/test escape hatch (no Wave account
+        // configured) — it must never silently confirm a *paid* order in
+        // that state. Free tickets are already handled above; anything left
+        // here has a real amount due, so refuse rather than skip Wave.
+        if (! config('tickets.payment_enabled')) {
+            $order->update(['status' => OrderStatus::Failed]);
+
+            // abort(503, ...) would silently fall back to Laravel's generic
+            // stock error page — the message never reaches the buyer. This
+            // is a normal Inertia form submission, so surface it the same
+            // way the Wave-failure branch below does: a redirect back with
+            // a flash error the buyer actually sees.
+            return back()->withErrors([
+                'payment' => 'La vente de billets est temporairement indisponible.',
+            ]);
         }
 
         try {
@@ -150,11 +166,13 @@ class CheckoutController extends Controller
 
         abort_if($order->tickets->isEmpty(), 404);
 
-        // The QR is rendered on the fly from Ticket::fullToken() rather than
-        // read from storage/qr_image_path: the web and worker containers
-        // don't share a filesystem in production, so a PNG the worker wrote
-        // to disk isn't visible here. Regenerating is deterministic (same
-        // input in, same PNG out) and needs no shared storage.
+        // The QR is rendered on the fly from Ticket::fullToken() — this is
+        // the ONLY place a QR image is ever produced. It's never written to
+        // disk: the web and worker containers don't share a filesystem in
+        // production, and a QR PNG on the public disk was previously
+        // reachable by anyone who could guess/enumerate its URL, with no
+        // authentication at all. Regenerating here is deterministic (same
+        // input in, same PNG out) and needs no shared/public storage.
         $tickets = $order->tickets->map(fn (Ticket $ticket): array => [
             'qr_src' => 'data:image/png;base64,'.base64_encode(
                 $this->qrCodeGenerator->toPng($ticket->fullToken())

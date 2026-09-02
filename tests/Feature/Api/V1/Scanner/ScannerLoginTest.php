@@ -67,7 +67,10 @@ test('an unknown email returns the same 422 shape as an incorrect password', fun
     ]);
 });
 
-test('a non-scanner account is rejected with the documented 403 message', function () {
+test('a non-scanner account is rejected with the same generic 422 shape as a wrong password', function () {
+    // A distinct response here (e.g. 403) would let an attacker confirm a
+    // guessed credential pair is genuinely valid — just for the wrong
+    // role — rather than simply wrong.
     $organizer = User::factory()->organizer()->create();
 
     $response = $this->postJson('/api/v1/scanner/login', [
@@ -75,9 +78,30 @@ test('a non-scanner account is rejected with the documented 403 message', functi
         'password' => 'password',
     ]);
 
-    $response->assertStatus(403)->assertJson([
-        'message' => "Ce compte n'a pas les droits de scanner.",
+    $response->assertStatus(422)->assertJson([
+        'message' => 'Les identifiants fournis sont incorrects.',
+        'errors' => [
+            'email' => ['Les identifiants fournis sont incorrects.'],
+        ],
     ]);
+});
+
+test('scanner login is rate limited to 5 attempts per minute per email+IP', function () {
+    $scanner = User::factory()->scanner()->create();
+
+    for ($i = 0; $i < 5; $i++) {
+        $this->postJson('/api/v1/scanner/login', [
+            'email' => $scanner->email,
+            'password' => 'wrong-password',
+        ]);
+    }
+
+    $sixthAttempt = $this->postJson('/api/v1/scanner/login', [
+        'email' => $scanner->email,
+        'password' => 'wrong-password',
+    ]);
+
+    $sixthAttempt->assertStatus(429);
 });
 
 test('missing credentials return validation errors', function () {

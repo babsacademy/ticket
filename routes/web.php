@@ -5,7 +5,7 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('/', [EventController::class, 'index'])->name('home');
 
-Route::middleware(['auth', 'verified'])->group(function () {
+Route::middleware(['auth', 'verified', 'no-scanner'])->group(function () {
     Route::inertia('dashboard', 'dashboard')->name('dashboard');
 });
 

@@ -59,6 +59,12 @@ class SecurityController extends Controller
             'password' => $request->password,
         ]);
 
+        // Revoke every API token issued under the old password: if it was
+        // ever compromised, changing it should also invalidate any Sanctum
+        // session (e.g. a scanner token) an attacker obtained with it,
+        // not just the web session.
+        $request->user()->tokens()->delete();
+
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Password updated.')]);
 
         return back();

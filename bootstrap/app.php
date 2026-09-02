@@ -3,6 +3,7 @@
 use App\Http\Middleware\EnsureRole;
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
+use App\Http\Middleware\PreventScannerWebAccess;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -28,7 +29,25 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             'role' => EnsureRole::class,
+            'no-scanner' => PreventScannerWebAccess::class,
         ]);
+
+        // Railway (and Laravel Cloud) terminate TLS at a load balancer and
+        // forward plain HTTP with X-Forwarded-* headers — without trusting
+        // it, Laravel can't tell the original request was HTTPS, and
+        // $request->ip() returns the proxy's IP instead of the real
+        // client's for every request (silently breaking every IP-keyed
+        // rate limiter in AppServiceProvider). '*' is the standard,
+        // documented setting for PaaS platforms whose proxy IPs aren't
+        // fixed/known in advance. (AppServiceProvider's URL::forceScheme()
+        // stays as a belt-and-suspenders fallback — harmless once this is
+        // also correctly trusted.)
+        $middleware->trustProxies(at: '*');
+
+        // No explicit host list: the default (config('app.url') and its
+        // subdomains) already resolves to whatever APP_URL is set to per
+        // environment — see vendor TrustHosts::allSubdomainsOfApplicationUrl().
+        $middleware->trustHosts();
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

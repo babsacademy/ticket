@@ -107,13 +107,25 @@ test('every protected scanner endpoint rejects a request with no Bearer token', 
 
 // 5. Dashboard access with the scanner role: per CLAUDE.md's role table, a
 // scanner account exists solely to authenticate against the Flutter app —
-// it must never reach the admin back-office, regardless of how it got a
-// web session.
+// it must never reach the admin back-office, or any authenticated web
+// route, regardless of how it got a web session. It's caught (and logged
+// out) by the 'no-scanner' middleware before any route-specific role
+// check even runs.
 test('a scanner account cannot reach the admin back-office', function () {
     $scanner = User::factory()->scanner()->create();
 
-    $this->actingAs($scanner)->get(route('admin.events.index'))->assertForbidden();
-    $this->actingAs($scanner)->get(route('admin.events.create'))->assertForbidden();
+    $this->actingAs($scanner)->get(route('admin.events.index'))->assertRedirect(route('login'));
+    $this->actingAs($scanner)->get(route('admin.events.create'))->assertRedirect(route('login'));
+});
+
+test('a scanner account cannot reach the generic dashboard, and is logged out in the attempt', function () {
+    $scanner = User::factory()->scanner()->create();
+
+    $response = $this->actingAs($scanner)->get(route('dashboard'));
+
+    $response->assertRedirect(route('login'));
+    $response->assertSessionHasErrors('email');
+    $this->assertGuest();
 });
 
 // 7. Scan state on download: only authenticated scanners may read
@@ -139,6 +151,7 @@ test('ticket download scan state is only exposed to authenticated scanners and o
     $wrongRole->assertForbidden();
 
     $scanner = User::factory()->scanner()->create();
+    $scanner->assignedEvents()->attach($event);
     Sanctum::actingAs($scanner, ['*']);
     $authorized = $this->getJson("/api/v1/scanner/events/{$event->id}/tickets");
 
@@ -163,4 +176,29 @@ test('a burst of checkout submissions past the limit is throttled with 429', fun
 
     $sixthAttempt->assertStatus(429);
     expect(Order::query()->where('event_id', $event->id)->where('status', OrderStatus::Paid)->count())->toBe(0);
+});
+
+// 8. IDOR on scanner event access: a valid scanner token for one event
+// must not let its holder enumerate or download another event's tickets
+// just by guessing event IDs — access requires an explicit scanner_event
+// assignment, not merely a valid role.
+test('a valid scanner token cannot list or download tickets for an event it is not assigned to', function () {
+    $scanner = User::factory()->scanner()->create();
+    Sanctum::actingAs($scanner, ['*']);
+
+    $assignedEvent = Event::factory()->published()->create(['date' => now()->addWeek()]);
+    $scanner->assignedEvents()->attach($assignedEvent);
+
+    $unassignedEvent = Event::factory()->published()->create(['date' => now()->addWeek()]);
+    $ticketType = TicketType::factory()->for($unassignedEvent)->create();
+    $paidOrder = Order::factory()->for($unassignedEvent)->paid()->create();
+    Ticket::factory()->for($paidOrder)->for($ticketType)->create();
+
+    $this->getJson('/api/v1/scanner/events')
+        ->assertOk()
+        ->assertJsonCount(1, 'data')
+        ->assertJsonPath('data.0.id', $assignedEvent->id);
+
+    $this->getJson("/api/v1/scanner/events/{$unassignedEvent->id}/tickets")
+        ->assertForbidden();
 });

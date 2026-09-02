@@ -64,6 +64,28 @@ test('password can be reset with valid token', function () {
     });
 });
 
+test('resetting the password revokes every existing Sanctum token', function () {
+    Notification::fake();
+
+    $user = User::factory()->create();
+    $user->createToken('old-device');
+
+    $this->post(route('password.email'), ['email' => $user->email]);
+
+    Notification::assertSentTo($user, ResetPassword::class, function ($notification) use ($user) {
+        $this->post(route('password.update'), [
+            'token' => $notification->token,
+            'email' => $user->email,
+            'password' => 'new-password',
+            'password_confirmation' => 'new-password',
+        ]);
+
+        expect($user->tokens()->count())->toBe(0);
+
+        return true;
+    });
+});
+
 test('password cannot be reset with invalid token', function () {
     $user = User::factory()->create();
 

@@ -25,5 +25,12 @@ class ResetUserPassword implements ResetsUserPasswords
         $user->forceFill([
             'password' => $input['password'],
         ])->save();
+
+        // Revoke every API token issued under the old password — a
+        // password reset usually means the old one was compromised or
+        // forgotten under suspicious circumstances, either way any
+        // existing Sanctum session (e.g. a scanner token) should not
+        // survive it.
+        $user->tokens()->delete();
     }
 }

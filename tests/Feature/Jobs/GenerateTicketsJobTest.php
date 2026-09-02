@@ -12,7 +12,6 @@ use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Storage;
 
 test('it generates one signed, verifiable ticket per purchased unit and queues the notification', function () {
-    Storage::fake('public');
     Bus::fake([SendTicketNotificationJob::class]);
 
     $event = Event::factory()->published()->create();
@@ -32,19 +31,34 @@ test('it generates one signed, verifiable ticket per purchased unit and queues t
     $signatureService = app(TicketSignatureService::class);
 
     Ticket::all()->each(function (Ticket $ticket) use ($signatureService): void {
-        expect($ticket->holder_name)->toBe('Fatou Sow')
-            ->and($ticket->qr_image_path)->not->toBeNull();
+        expect($ticket->holder_name)->toBe('Fatou Sow');
 
         $result = $signatureService->verifySignature($ticket->fullToken());
 
         expect($result['valid'])->toBeTrue()
             ->and($result['data']['ticket_id'])->toBe($ticket->id);
-
-        Storage::disk('public')->assertExists($ticket->qr_image_path);
     });
 
     expect($standard->fresh()->sold_count)->toBe(2)
         ->and($vip->fresh()->sold_count)->toBe(1);
 
     Bus::assertDispatched(SendTicketNotificationJob::class, fn (SendTicketNotificationJob $job) => $job->order->is($order));
+});
+
+test('it never writes a QR image to the public disk', function () {
+    // Regression test: qr_image_path (and the public-disk PNG it pointed
+    // at) let anyone who could guess/enumerate the URL view another
+    // buyer's ticket QR without authentication — the QR must only ever be
+    // rendered on demand (CheckoutController::ticketPdf()), never stored.
+    Storage::fake('public');
+    Bus::fake([SendTicketNotificationJob::class]);
+
+    $event = Event::factory()->published()->create();
+    $ticketType = TicketType::factory()->for($event)->create(['quantity' => 10, 'sold_count' => 0]);
+    $order = Order::factory()->for($event)->create(['buyer_name' => 'Fatou Sow']);
+    OrderItem::factory()->create(['order_id' => $order->id, 'ticket_type_id' => $ticketType->id, 'quantity' => 1, 'unit_price' => $ticketType->price]);
+
+    GenerateTicketsJob::dispatchSync($order);
+
+    expect(Storage::disk('public')->allFiles())->toBeEmpty();
 });

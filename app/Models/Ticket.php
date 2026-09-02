@@ -17,13 +17,12 @@ use Illuminate\Support\Carbon;
  * @property string|null $holder_email
  * @property string $qr_payload
  * @property string $signature
- * @property string|null $qr_image_path
  * @property Carbon|null $scanned_at
  * @property int|null $scanned_by
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
-#[Fillable(['order_id', 'ticket_type_id', 'holder_name', 'holder_email', 'qr_payload', 'signature', 'qr_image_path', 'scanned_at', 'scanned_by'])]
+#[Fillable(['order_id', 'ticket_type_id', 'holder_name', 'holder_email', 'qr_payload', 'signature', 'scanned_at', 'scanned_by'])]
 class Ticket extends Model
 {
     /** @use HasFactory<TicketFactory> */

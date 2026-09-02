@@ -5,12 +5,10 @@ namespace App\Jobs;
 use App\Models\Order;
 use App\Models\Ticket;
 use App\Models\TicketType;
-use App\Services\QrCodeGenerator;
 use App\Services\TicketSignatureService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 
 class GenerateTicketsJob implements ShouldQueue
 {
@@ -33,10 +31,17 @@ class GenerateTicketsJob implements ShouldQueue
      * pushes past `quantity` — refusing to issue a paid-for ticket would be worse than a
      * capacity overrun, which the checkout-time check in CheckoutController is meant to
      * prevent in the first place.
+     *
+     * Deliberately does NOT render a QR PNG to disk: that used to go to the
+     * "public" disk (storage/app/public/tickets/{id}.png), reachable by
+     * anyone who could guess or enumerate the URL — no authentication, no
+     * relation to who actually bought the ticket. The QR is rendered on
+     * demand instead, from Ticket::fullToken(), wherever it's actually
+     * needed (CheckoutController::ticketPdf()).
      */
-    public function handle(TicketSignatureService $signatureService, QrCodeGenerator $qrGenerator): void
+    public function handle(TicketSignatureService $signatureService): void
     {
-        DB::transaction(function () use ($signatureService, $qrGenerator): void {
+        DB::transaction(function () use ($signatureService): void {
             $order = Order::query()->with('items')->lockForUpdate()->findOrFail($this->order->id);
 
             foreach ($order->items as $item) {
@@ -59,13 +64,9 @@ class GenerateTicketsJob implements ShouldQueue
                     $qrString = $signatureService->generatePayload($ticket);
                     [$payload, $signature] = explode('.', $qrString, 2);
 
-                    $imagePath = "tickets/{$ticket->id}.png";
-                    Storage::disk('public')->put($imagePath, $qrGenerator->toPng($qrString));
-
                     $ticket->update([
                         'qr_payload' => $payload,
                         'signature' => $signature,
-                        'qr_image_path' => $imagePath,
                     ]);
                 }
 

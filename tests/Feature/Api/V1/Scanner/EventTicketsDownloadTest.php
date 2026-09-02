@@ -39,10 +39,27 @@ test('an unknown event returns a 404', function () {
     $response->assertNotFound();
 });
 
+test('a scanner not assigned to the event is forbidden, even with a valid token', function () {
+    // Regression test (IDOR fix): any authenticated scanner used to be
+    // able to download any event's paid tickets — including their signed
+    // QR tokens — just by guessing/enumerating the event ID.
+    Sanctum::actingAs($this->scanner, ['*']);
+
+    $event = Event::factory()->create();
+    $ticketType = TicketType::factory()->for($event)->create();
+    $paidOrder = Order::factory()->for($event)->paid()->create();
+    Ticket::factory()->for($paidOrder)->for($ticketType)->create();
+
+    $response = $this->getJson("/api/v1/scanner/events/{$event->id}/tickets");
+
+    $response->assertForbidden();
+});
+
 test('it lists only the tickets belonging to paid orders for that event', function () {
     Sanctum::actingAs($this->scanner, ['*']);
 
     $event = Event::factory()->create();
+    $this->scanner->assignedEvents()->attach($event);
     $ticketType = TicketType::factory()->for($event)->create(['name' => 'VIP']);
 
     $paidOrder = Order::factory()->for($event)->paid()->create();
@@ -78,15 +95,16 @@ test('a scanned ticket exposes is_scanned and scanned_at but never scanned_by', 
     Sanctum::actingAs($this->scanner, ['*']);
 
     $event = Event::factory()->create();
+    $this->scanner->assignedEvents()->attach($event);
     $ticketType = TicketType::factory()->for($event)->create(['name' => 'VIP']);
     $paidOrder = Order::factory()->for($event)->paid()->create();
     $scannedAt = now()->subHour();
-    $scanner = User::factory()->scanner()->create();
+    $scannedBy = User::factory()->scanner()->create();
 
     $scannedTicket = Ticket::factory()->for($paidOrder)->for($ticketType)->create([
         'holder_name' => 'Fatou Sow',
         'scanned_at' => $scannedAt,
-        'scanned_by' => $scanner->id,
+        'scanned_by' => $scannedBy->id,
     ]);
 
     $response = $this->getJson("/api/v1/scanner/events/{$event->id}/tickets");
@@ -109,6 +127,7 @@ test('an unscanned ticket returns is_scanned false and scanned_at null', functio
     Sanctum::actingAs($this->scanner, ['*']);
 
     $event = Event::factory()->create();
+    $this->scanner->assignedEvents()->attach($event);
     $ticketType = TicketType::factory()->for($event)->create();
     $paidOrder = Order::factory()->for($event)->paid()->create();
     Ticket::factory()->for($paidOrder)->for($ticketType)->create([
@@ -134,6 +153,7 @@ test('the downloaded token matches the exact string encoded in the physical QR',
     Sanctum::actingAs($this->scanner, ['*']);
 
     $event = Event::factory()->create();
+    $this->scanner->assignedEvents()->attach($event);
     $ticketType = TicketType::factory()->for($event)->create();
     $order = Order::factory()->for($event)->paid()->create();
     $ticket = Ticket::factory()->for($order)->for($ticketType)->create();
@@ -159,7 +179,9 @@ test('it excludes tickets belonging to other events', function () {
     Sanctum::actingAs($this->scanner, ['*']);
 
     $event = Event::factory()->create();
+    $this->scanner->assignedEvents()->attach($event);
     $otherEvent = Event::factory()->create();
+    $this->scanner->assignedEvents()->attach($otherEvent);
 
     $otherTicketType = TicketType::factory()->for($otherEvent)->create();
     $otherOrder = Order::factory()->for($otherEvent)->paid()->create();

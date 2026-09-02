@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\Http;
 
 beforeEach(function () {
     config(['services.wave.secret_key' => 'wave-secret-key']);
-    config(['services.wave.webhook_secret' => 'wave-webhook-secret']);
+    config(['services.wave.webhook_secret' => 'wave-webhook-secret-at-least-32-characters-long']);
 
     $this->gateway = new WavePaymentGateway;
 });
@@ -52,7 +52,7 @@ test('initiate throws when the Wave API responds with an error', function () {
 test('verifyWebhookSignature accepts a correctly signed, fresh payload', function () {
     $payload = '{"type":"checkout.session.completed"}';
     $timestamp = time();
-    $expected = hash_hmac('sha256', "{$timestamp}.{$payload}", 'wave-webhook-secret');
+    $expected = hash_hmac('sha256', "{$timestamp}.{$payload}", 'wave-webhook-secret-at-least-32-characters-long');
 
     $result = $this->gateway->verifyWebhookSignature($payload, "t={$timestamp},v1={$expected}");
 
@@ -62,7 +62,7 @@ test('verifyWebhookSignature accepts a correctly signed, fresh payload', functio
 test('verifyWebhookSignature rejects a tampered payload', function () {
     $payload = '{"type":"checkout.session.completed"}';
     $timestamp = time();
-    $expected = hash_hmac('sha256', "{$timestamp}.".'{"type":"something-else"}', 'wave-webhook-secret');
+    $expected = hash_hmac('sha256', "{$timestamp}.".'{"type":"something-else"}', 'wave-webhook-secret-at-least-32-characters-long');
 
     $result = $this->gateway->verifyWebhookSignature($payload, "t={$timestamp},v1={$expected}");
 
@@ -76,7 +76,7 @@ test('verifyWebhookSignature rejects a missing signature header', function () {
 test('verifyWebhookSignature rejects a stale timestamp', function () {
     $payload = '{"type":"checkout.session.completed"}';
     $timestamp = time() - 3600;
-    $expected = hash_hmac('sha256', "{$timestamp}.{$payload}", 'wave-webhook-secret');
+    $expected = hash_hmac('sha256', "{$timestamp}.{$payload}", 'wave-webhook-secret-at-least-32-characters-long');
 
     $result = $this->gateway->verifyWebhookSignature($payload, "t={$timestamp},v1={$expected}");
 

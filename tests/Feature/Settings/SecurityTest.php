@@ -86,6 +86,23 @@ test('password can be updated', function () {
     expect(Hash::check('new-password', $user->refresh()->password))->toBeTrue();
 });
 
+test('updating the password revokes every existing Sanctum token', function () {
+    $user = User::factory()->create();
+    $user->createToken('old-device');
+
+    expect($user->tokens()->count())->toBe(1);
+
+    $this->actingAs($user)
+        ->from(route('security.edit'))
+        ->put(route('user-password.update'), [
+            'current_password' => 'password',
+            'password' => 'new-password',
+            'password_confirmation' => 'new-password',
+        ]);
+
+    expect($user->tokens()->count())->toBe(0);
+});
+
 test('correct password must be provided to update password', function () {
     $user = User::factory()->create();
 

@@ -6,14 +6,14 @@ use App\Models\Order;
 use Illuminate\Support\Facades\Bus;
 
 beforeEach(function () {
-    config(['services.wave.webhook_secret' => 'wave-webhook-secret']);
+    config(['services.wave.webhook_secret' => 'wave-webhook-secret-at-least-32-characters-long']);
 });
 
 function signedWavePayload(array $data): array
 {
     $payload = json_encode($data);
     $timestamp = time();
-    $signature = hash_hmac('sha256', "{$timestamp}.{$payload}", 'wave-webhook-secret');
+    $signature = hash_hmac('sha256', "{$timestamp}.{$payload}", 'wave-webhook-secret-at-least-32-characters-long');
 
     return [$payload, "t={$timestamp},v1={$signature}"];
 }

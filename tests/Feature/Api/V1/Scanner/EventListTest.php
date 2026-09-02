@@ -25,7 +25,7 @@ test('a non-scanner token is rejected', function () {
     $response->assertForbidden();
 });
 
-test('it lists published events happening today or later, with their paid ticket count', function () {
+test('it lists published events happening today or later that the scanner is assigned to, with their paid ticket count', function () {
     Sanctum::actingAs($this->scanner, ['*']);
 
     $event = Event::factory()->published()->create([
@@ -34,6 +34,7 @@ test('it lists published events happening today or later, with their paid ticket
         'city' => 'Dakar',
         'date' => now()->addWeek(),
     ]);
+    $this->scanner->assignedEvents()->attach($event);
     $ticketType = TicketType::factory()->for($event)->create();
 
     $paidOrder = Order::factory()->for($event)->paid()->create();
@@ -59,10 +60,24 @@ test('it lists published events happening today or later, with their paid ticket
     ]);
 });
 
+test('it excludes events the scanner is not assigned to', function () {
+    // Regression test (IDOR fix): a scanner token used to see every
+    // published event on the platform, not just the ones it's actually
+    // meant to work.
+    Sanctum::actingAs($this->scanner, ['*']);
+
+    Event::factory()->published()->create(['date' => now()->addWeek()]);
+
+    $response = $this->getJson('/api/v1/scanner/events');
+
+    $response->assertOk()->assertJsonCount(0, 'data');
+});
+
 test('it includes an event happening earlier today', function () {
     Sanctum::actingAs($this->scanner, ['*']);
 
     $event = Event::factory()->published()->create(['date' => now()->startOfDay()]);
+    $this->scanner->assignedEvents()->attach($event);
 
     $response = $this->getJson('/api/v1/scanner/events');
 
@@ -72,7 +87,8 @@ test('it includes an event happening earlier today', function () {
 test('it excludes events that already happened', function () {
     Sanctum::actingAs($this->scanner, ['*']);
 
-    Event::factory()->published()->create(['date' => now()->subDay()]);
+    $event = Event::factory()->published()->create(['date' => now()->subDay()]);
+    $this->scanner->assignedEvents()->attach($event);
 
     $response = $this->getJson('/api/v1/scanner/events');
 
@@ -82,9 +98,10 @@ test('it excludes events that already happened', function () {
 test('it excludes non-published events', function () {
     Sanctum::actingAs($this->scanner, ['*']);
 
-    Event::factory()->create(['date' => now()->addWeek()]);
-    Event::factory()->cancelled()->create(['date' => now()->addWeek()]);
-    Event::factory()->ended()->create();
+    $draft = Event::factory()->create(['date' => now()->addWeek()]);
+    $cancelled = Event::factory()->cancelled()->create(['date' => now()->addWeek()]);
+    $ended = Event::factory()->ended()->create();
+    $this->scanner->assignedEvents()->attach([$draft->id, $cancelled->id, $ended->id]);
 
     $response = $this->getJson('/api/v1/scanner/events');
 
@@ -96,6 +113,7 @@ test('events are ordered by date, soonest first', function () {
 
     $later = Event::factory()->published()->create(['date' => now()->addMonth()]);
     $sooner = Event::factory()->published()->create(['date' => now()->addDay()]);
+    $this->scanner->assignedEvents()->attach([$later->id, $sooner->id]);
 
     $response = $this->getJson('/api/v1/scanner/events');
 

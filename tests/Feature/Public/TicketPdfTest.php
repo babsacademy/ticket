@@ -20,16 +20,16 @@ test('it downloads a PDF containing the order tickets', function () {
     expect($response->headers->get('content-type'))->toContain('application/pdf');
 });
 
-test('it renders the QR code from qr_payload without needing shared storage', function () {
+test('it renders the QR code from qr_payload without needing shared or public storage', function () {
     // Regression test: the web and worker containers don't share a
-    // filesystem in production, so the PDF's QR must be regenerated from
-    // qr_payload rather than read from qr_image_path/Storage — this must
-    // keep working even when no QR image was ever stored on disk.
+    // filesystem in production, and the QR is never written to disk at
+    // all anymore (see GenerateTicketsJob) — this must render purely from
+    // the ticket's own qr_payload/signature columns.
     $event = Event::factory()->create();
     $ticketType = TicketType::factory()->for($event)->create();
     $order = Order::factory()->for($event)->paid()->create();
 
-    Ticket::factory()->for($order)->for($ticketType)->create(['qr_image_path' => null]);
+    Ticket::factory()->for($order)->for($ticketType)->create();
 
     $response = $this->get(route('checkout.ticket-pdf', $order));
 

@@ -26,6 +26,12 @@ class WavePaymentGateway
     private const SIGNATURE_TOLERANCE_SECONDS = 300;
 
     /**
+     * Minimum acceptable length for WAVE_WEBHOOK_SECRET — see
+     * TicketSignatureService::MIN_SECRET_LENGTH for the same reasoning.
+     */
+    private const MIN_SECRET_LENGTH = 32;
+
+    /**
      * Create a Wave checkout session for the given order and return its launch URL.
      *
      * @return array{session_id: string, launch_url: string}
@@ -57,9 +63,20 @@ class WavePaymentGateway
 
     /**
      * Verify that a webhook payload was genuinely signed by Wave.
+     *
+     * @throws RuntimeException if WAVE_WEBHOOK_SECRET is missing or too short.
      */
     public function verifyWebhookSignature(string $payload, ?string $signatureHeader): bool
     {
+        $secret = (string) config('services.wave.webhook_secret');
+
+        if (strlen($secret) < self::MIN_SECRET_LENGTH) {
+            throw new RuntimeException(
+                'WAVE_WEBHOOK_SECRET est absent ou trop court (minimum '.self::MIN_SECRET_LENGTH.' caractères) — '
+                .'impossible de vérifier une signature de webhook en toute sécurité.',
+            );
+        }
+
         if ($signatureHeader === null || $signatureHeader === '') {
             return false;
         }
@@ -84,7 +101,7 @@ class WavePaymentGateway
             return false;
         }
 
-        $expected = hash_hmac('sha256', "{$timestamp}.{$payload}", (string) config('services.wave.webhook_secret'));
+        $expected = hash_hmac('sha256', "{$timestamp}.{$payload}", $secret);
 
         return hash_equals($expected, $parts['v1']);
     }

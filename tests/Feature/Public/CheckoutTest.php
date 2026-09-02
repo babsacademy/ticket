@@ -166,7 +166,11 @@ test('a free order (total of 0) bypasses Wave entirely and goes straight to conf
     Bus::assertDispatched(GenerateTicketsJob::class, fn (GenerateTicketsJob $job) => $job->order->is($order));
 });
 
-test('when PAYMENT_ENABLED is false, a paid order also bypasses Wave', function () {
+test('when PAYMENT_ENABLED is false, a paid order is refused instead of bypassing Wave', function () {
+    // Regression test for a real vulnerability: PAYMENT_ENABLED=false used
+    // to bypass Wave for ANY order, not just free ones — meaning a
+    // misconfigured production deploy would confirm real paid orders
+    // without ever charging the buyer.
     Bus::fake();
     config(['tickets.payment_enabled' => false]);
 
@@ -181,11 +185,36 @@ test('when PAYMENT_ENABLED is false, a paid order also bypasses Wave', function 
         ],
     ]);
 
+    $response->assertRedirect();
+    $response->assertSessionHasErrors(['payment' => 'La vente de billets est temporairement indisponible.']);
+
+    $order = Order::firstOrFail();
+    expect($order->status)->toBe(OrderStatus::Failed);
+
+    Http::assertNothingSent();
+    Bus::assertNotDispatched(GenerateTicketsJob::class);
+});
+
+test('when PAYMENT_ENABLED is false, a genuinely free order still bypasses Wave', function () {
+    Bus::fake();
+    config(['tickets.payment_enabled' => false]);
+
+    $event = Event::factory()->published()->create();
+    $ticketType = TicketType::factory()->for($event)->create(['price' => 0, 'quantity' => 100, 'sold_count' => 0]);
+
+    $response = $this->post(route('checkout.store', $event), [
+        'buyer_name' => 'Fatou Sow',
+        'buyer_phone' => '+221771234567',
+        'items' => [
+            ['ticket_type_id' => $ticketType->id, 'quantity' => 1],
+        ],
+    ]);
+
     $order = Order::firstOrFail();
 
     $response->assertRedirect(route('checkout.confirmation', $order));
     expect($order->status)->toBe(OrderStatus::Paid)
-        ->and((float) $order->total_amount)->toBe(5000.0);
+        ->and((float) $order->total_amount)->toBe(0.0);
 
     Http::assertNothingSent();
     Bus::assertDispatched(GenerateTicketsJob::class);

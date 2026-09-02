@@ -19,10 +19,17 @@ test('guests are redirected to login', function () {
 
 test('non-admin users are forbidden from the admin dashboard', function () {
     $organizer = User::factory()->organizer()->create();
-    $scanner = User::factory()->scanner()->create();
 
     $this->actingAs($organizer)->get(route('admin.events.index'))->assertForbidden();
-    $this->actingAs($scanner)->get(route('admin.events.index'))->assertForbidden();
+});
+
+test('a scanner is redirected away from the admin dashboard before the role check even runs', function () {
+    // The 'no-scanner' middleware runs before 'role:admin' in this route
+    // group, so a scanner is caught (and logged out) by that first —
+    // never reaching a plain 403.
+    $scanner = User::factory()->scanner()->create();
+
+    $this->actingAs($scanner)->get(route('admin.events.index'))->assertRedirect(route('login'));
 });
 
 test('admins can view the events index with sales stats', function () {
